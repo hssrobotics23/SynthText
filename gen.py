@@ -12,11 +12,13 @@ Entry-point for generating synthetic text images, as described in:
     }
 """
 
+import re
 import glob
 import numpy as np
 import h5py
 import os, sys, traceback
 import os.path as osp
+from pathlib import Path
 from PIL import ImageFilter
 from synthgen import *
 from common import *
@@ -32,7 +34,59 @@ SECS_PER_IMG = 90 #max time per image in seconds
 DATA_PATH = 'data'
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
-OUT_FILE = 'results/SynthText.h5'
+OUT_DIR = 'results/images'
+
+# Names
+name_map = {
+    'allspice': 'allspice',
+    'ancho-powder': 'ancho',
+    'annatto-seeds': 'annatto',
+    'baharat-seasoning': 'baharat',
+    'black-pepper': 'pepper',
+    'cardamom': 'cardamom',
+    'carom-seeds': 'carom',
+    'cayenne-pepper': 'cayenne',
+    'celery-seeds': 'celery seeds',
+    'chervil': 'chervil',
+    'chia-seeds': 'chia seeds',
+    'chili-powder': 'chili powder',
+    'chinese-five-spice-powder': 'Chinese 5 spice',
+    'chipotle-powder': 'chipotle',
+    'cinnamon': 'cinnamon',
+    'coriander': 'coriander',
+    'cumin': 'cumin',
+    'curry-powder': 'curry',
+    'dukkah': 'dukkah',
+    'fenugreek': 'fenugreek',
+    'flax-seeds': 'flax seeds',
+    'garam-masala': 'garam masala',
+    'garlic-powder': 'garlic',
+    'ginger': 'ginger',
+    'gochugaru': 'gochugaru',
+    'grains-of-paradise': 'grains of paradise',
+    'ground-cloves': 'cloves',
+    'herbes-de-provence': 'herbes de provence',
+    'kosher-salt': 'kosher salt',
+    'loomi': 'loomi',
+    'mace': 'mace',
+    'mahlab': 'mahlab',
+    'mojo-seasoning': 'Mojo',
+    'mustard-powder': 'mustard',
+    'nutmeg': 'nutmeg',
+    'old-bay-seasoning': 'Old Bay',
+    'paprika': 'paprika',
+    'pickling-salt': 'pickling salt',
+    'pickling-spice': 'pickling spice',
+    'pumpkin-pie-spice': 'pumpkin spice',
+    'ras-el-hanout': 'ras el hanout',
+    'saffron': 'saffron',
+    'sea-salt': 'sea salt',
+    'smoked-paprika': 'smoked paprika',
+    'star-anise': 'star anise',
+    'sumac': 'sumac',
+    'turmeric': 'turmeric',
+    'za-atar-seasoning': 'za\'atar'
+}
 
 
 def contour_area(contours):
@@ -67,58 +121,43 @@ def to_bounding_box(contours, n_boxes=1):
             yield (x, y, x + w, y + h)
 
 def get_data(folder):
-    keys = glob.glob(osp.join(folder, '*mask.png'))
+    paths = glob.glob(osp.join(folder, '*mask.png'))
     out = {
         "seg": {},
         "image": {},
         "area": {},
         "label": {}
     }
-    for key in keys:
-        im = Image.open(key)
-        im_blur = Image.open(key)
-        im_blur.filter(ImageFilter.BoxBlur(8))
+    for path in paths:
+        im = Image.open(path)
         arr = np.asarray(im)
-        arr_blur = np.asarray(im_blur)
+
+        # Key for name lookup
+        f_name = Path(path).name
+        found = re.search(r"(prompt-.+)-mask", f_name)
+        key = found.groups(1)[0] if found else f_name
 
         # Simple image color
         out["image"][key] = arr[:,:,:3]
 
         # Image blur and threshhold
-        thresh_in = (arr_blur[:,:,3] < 127).astype(np.uint8)
+        thresh_in = (arr[:,:,3] < 127).astype(np.uint8)
         contours = cv2.findContours(thresh_in, 1, 2)[0]
 
         mask = np.zeros(thresh_in.shape, dtype=np.uint16)
       
         for (x0, y0, x1, y1) in to_bounding_box(contours, 1):
-            mask[x0:x1, y0:y1] = 1
+            mask[y0:y1, x0:x1] = 1
 
         out["seg"][key] = mask
 
         within = np.count_nonzero(mask)
-        out["area"][key] = np.uint32([
-            mask.size - within, within
-        ])
-        out["label"][key] = np.uint16([0, 1])
+        out["area"][key] = np.uint32([within])
+        out["label"][key] = np.uint16([1])
+
+    keys = ''.join([f'"{k}"' for k in out["area"].keys()])
+    print(f'loaded {keys}')
     return out
-
-
-def add_res_to_db(imgname,res,db):
-  """
-  Add the synthetically generated text image instance
-  and other metadata to the dataset.
-  """
-  ninstance = len(res)
-  for i in range(ninstance):
-    dname = "%s_%d"%(imgname, i)
-    db['data'].create_dataset(dname,data=res[i]['img'])
-    db['data'][dname].attrs['charBB'] = res[i]['charBB']
-    db['data'][dname].attrs['wordBB'] = res[i]['wordBB']        
-    #db['data'][dname].attrs['txt'] = res[i]['txt']
-    L = res[i]['txt']
-    L = [n.encode("ascii", "ignore") for n in L]
-    db['data'][dname].attrs['txt'] = L
-
 
 def main(folder):
   # open databases:
@@ -126,10 +165,9 @@ def main(folder):
   db = get_data(folder)
   print (colorize(Color.BLUE,'\t-> done',bold=True))
 
-  # open the output h5 file:
-  out_db = h5py.File(OUT_FILE,'w')
-  out_db.create_group('/data')
-  print (colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True))
+  # create output directory
+  Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+  print (colorize(Color.GREEN,'Storing the output in: '+OUT_DIR, bold=True))
 
   # get the names of the image files in the dataset:
   imnames = sorted(db['image'].keys())
@@ -139,7 +177,7 @@ def main(folder):
     NUM_IMG = N
   start_idx,end_idx = 0,min(NUM_IMG, N)
 
-  RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
+  RV3 = RendererV3(DATA_PATH, max_time=SECS_PER_IMG)
   for i in range(start_idx,end_idx):
     imname = imnames[i]
     try:
@@ -163,13 +201,16 @@ def main(folder):
       res = RV3.render_text(img,depth,seg,area,label,
                             ninstance=INSTANCE_PER_IMAGE,viz=False)
       if len(res) > 0:
-        # non-empty : successful in placing text:
-        add_res_to_db(imname,res,out_db)
+        for (ri, r) in enumerate(res):
+            out_name = f'{imname}-text-{ri}.png'
+            fname = os.path.join(OUT_DIR, out_name)
+            cv2.imwrite(fname, r["img"][:,:,::-1])
+            print(f'Saved {out_name}')
+            # non-empty : successful in placing text:
     except:
       traceback.print_exc()
       print (colorize(Color.GREEN,'>>>> CONTINUING....', bold=True))
       continue
-  out_db.close()
 
 
 if __name__=='__main__':

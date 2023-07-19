@@ -52,14 +52,11 @@ class TextRegions(object):
         return wx>TextRegions.minW and wy>TextRegions.minW
 
     @staticmethod
-    def get_hw(pt,return_rot=False):
+    def get_hw(pt):
         pt = pt.copy()
-        R = su.unrotate2d(pt)
         mu = np.median(pt,axis=0)
-        pt = (pt-mu[None,:]).dot(R.T) + mu[None,:]
+        pt = (pt-mu[None,:]) + mu[None,:]
         h,w = np.max(pt,axis=0) - np.min(pt,axis=0)
-        if return_rot:
-            return h,w,R
         return h,w
  
     @staticmethod
@@ -70,7 +67,7 @@ class TextRegions(object):
         """
         good = label[area > TextRegions.minArea]
         area = area[area > TextRegions.minArea]
-        filt,R = [],[]
+        filt = []
         for idx,i in enumerate(good):
             mask = seg==i
             xs,ys = np.where(mask)
@@ -79,25 +76,22 @@ class TextRegions(object):
             rect = cv2.minAreaRect(coords)          
             #box = np.array(cv2.cv.BoxPoints(rect))
             box = np.array(cv2.boxPoints(rect))
-            h,w,rot = TextRegions.get_hw(box,return_rot=True)
+            h,w = TextRegions.get_hw(box)
 
             f = (h > TextRegions.minHeight 
                 and w > TextRegions.minWidth
                 and TextRegions.minAspect < w/h < TextRegions.maxAspect
                 and area[idx]/w*h > TextRegions.pArea)
             filt.append(f)
-            R.append(rot)
 
         # filter bad regions:
         filt = np.array(filt)
         area = area[filt]
-        R = [R[i] for i in range(len(R)) if filt[i]]
 
         # sort the regions based on areas:
         aidx = np.argsort(-area)
         good = good[filt][aidx]
-        R = [R[i] for i in aidx]
-        filter_info = {'label':good, 'rot':R, 'area': area[aidx]}
+        filter_info = {'label':good, 'area': area[aidx]}
         return filter_info
 
     @staticmethod
@@ -145,7 +139,6 @@ class TextRegions(object):
         plane_info = {'label':[],
                       'coeff':[],
                       'support':[],
-                      'rot':[],
                       'area':[]}
         for idx,l in enumerate(regions['label']):
             mask = seg==l
@@ -162,9 +155,9 @@ class TextRegions(object):
                 plane_coeff = plane_model[0]
                 if np.abs(plane_coeff[2])>TextRegions.min_z_projection:
                     plane_info['label'].append(l)
+#                    print('plane model', plane_model[0]) #TODO
                     plane_info['coeff'].append(plane_model[0])
                     plane_info['support'].append(plane_model[1])
-                    plane_info['rot'].append(regions['rot'][idx])
                     plane_info['area'].append(regions['area'][idx])
 
         return plane_info
@@ -229,8 +222,6 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
     for i in range(len(contour)):
         cnt_ij = contour[i]
         xyz = su.DepthCamera.plane2xyz(center, cnt_ij, plane)
-        R = su.rot3d(plane[:3],n_front)
-        xyz = xyz.dot(R.T)
         pts_fp.append(xyz[:,:2])
         pts.append(cnt_ij)
 
@@ -647,6 +638,8 @@ class RendererV3(object):
             reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
             for idx in reg_range:
                 ireg = reg_idx[idx]
+#                print(place_masks[0].shape, place_masks[0].dtype)
+#                img[place_masks[ireg] == 255] = [0,255,0] #TODO
                 try:
                     if self.max_time is None:
                         txt_render_res = self.place_text(img,place_masks[ireg],

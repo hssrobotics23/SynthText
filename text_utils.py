@@ -83,9 +83,9 @@ class RenderFont(object):
     def __init__(self, data_dir='data'):
         # distribution over the type of text:
         # whether to get a single word, paragraph or a line:
-        self.p_text = {0.0 : 'WORD',
+        self.p_text = {1.0 : 'WORD',
                        0.0 : 'LINE',
-                       1.0 : 'PARA'}
+                       0.0 : 'PARA'}
 
         ## TEXT PLACEMENT PARAMETERS:
         self.f_shrink = 0.90
@@ -185,7 +185,6 @@ class RenderFont(object):
         BS = self.baselinestate.get_sample()
         curve = [BS['curve'](i-mid_idx) for i in range(wl)]
         curve[mid_idx] = -np.sum(curve) / (wl-1)
-        rots  = [-int(math.degrees(math.atan(BS['diff'](i-mid_idx)/(font.size/2)))) for i in range(wl)]
 
         bbs = []
         # place middle char
@@ -193,7 +192,7 @@ class RenderFont(object):
         rect.centerx = surf.get_rect().centerx
         rect.centery = surf.get_rect().centery + rect.height
         rect.centery +=  curve[mid_idx]
-        ch_bounds = font.render_to(surf, rect, word_text[mid_idx], rotation=rots[mid_idx])
+        ch_bounds = font.render_to(surf, rect, word_text[mid_idx])
         ch_bounds.x = rect.x + ch_bounds.x
         ch_bounds.y = rect.y - ch_bounds.y
         mid_ch_bb = np.array(ch_bounds)
@@ -224,7 +223,7 @@ class RenderFont(object):
                 newrect.topright = (last_rect.topleft[0]-2, newrect.topleft[1])
             newrect.centery = max(newrect.height, min(fsize[1] - newrect.height, newrect.centery + curve[i]))
             try:
-                bbrect = font.render_to(surf, newrect, ch, rotation=rots[i])
+                bbrect = font.render_to(surf, newrect, ch)
             except ValueError:
                 bbrect = font.render_to(surf, newrect, ch)
             bbrect.x = newrect.x + bbrect.x
@@ -377,6 +376,8 @@ class RenderFont(object):
             if np.any(np.r_[txt_arr.shape[:2]] > np.r_[mask.shape[:2]]):
                 #warn("text-array is bigger than mask")
                 continue
+
+            print('bb', bb.shape, np.min(bb), np.max(bb)) #TODO
 
             # position the text within the mask:
             text_mask,loc,bb, _ = self.place_text([txt_arr], mask, [bb])
@@ -615,6 +616,8 @@ class TextSource(object):
         return self.fdict[kind](nline_max,nchar_max)
         
     def sample_word(self,nline_max,nchar_max,niter=100):
+        print('Writing hello')
+        return 'hello' #TODO
         rand_line = self.txt[np.random.choice(len(self.txt))]                
         words = rand_line.split()
         rand_word = random.choice(words)

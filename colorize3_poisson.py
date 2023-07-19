@@ -439,6 +439,7 @@ class Colorize(object):
             loc = np.where(text_arr[i])
             lx, ly = np.min(loc[0]), np.min(loc[1])
             mx, my = np.max(loc[0]), np.max(loc[1])
+            print('color', 'lx', lx, 'ly', ly) #TODO
             l = np.array([lx,ly])
             m = np.array([mx,my])-l+1
             text_patch = text_arr[i][l[0]:l[0]+m[0],l[1]:l[1]+m[1]]
