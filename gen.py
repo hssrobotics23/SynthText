@@ -177,7 +177,7 @@ def main(folder):
     NUM_IMG = N
   start_idx,end_idx = 0,min(NUM_IMG, N)
 
-  RV3 = RendererV3(DATA_PATH, max_time=SECS_PER_IMG)
+  RV3 = RendererV3(name_map, DATA_PATH, max_time=SECS_PER_IMG)
   for i in range(start_idx,end_idx):
     imname = imnames[i]
     try:
@@ -198,7 +198,7 @@ def main(folder):
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 
       print (colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True))
-      res = RV3.render_text(img,depth,seg,area,label,
+      res = RV3.render_text(imname,img,depth,seg,area,label,
                             ninstance=INSTANCE_PER_IMAGE,viz=False)
       if len(res) > 0:
         for (ri, r) in enumerate(res):

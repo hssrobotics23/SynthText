@@ -353,8 +353,8 @@ def viz_textbb(fignum,text_im, bb_list,alpha=1.0):
 
 class RendererV3(object):
 
-    def __init__(self, data_dir, max_time=None):
-        self.text_renderer = tu.RenderFont(data_dir)
+    def __init__(self, name_map, data_dir, max_time=None):
+        self.text_renderer = tu.RenderFont(name_map, data_dir)
         self.colorizer = Colorize(data_dir)
         #self.colorizerV2 = colorV2.Colorize(data_dir)
 
@@ -483,11 +483,11 @@ class RendererV3(object):
             ksz = 5
         return cv2.GaussianBlur(text_mask,(ksz,ksz),bsz)
 
-    def place_text(self,rgb,collision_mask,H,Hinv):
+    def place_text(self,imname,rgb,collision_mask,H,Hinv):
         font = self.text_renderer.font_state.sample()
         font = self.text_renderer.font_state.init_font(font)
 
-        render_res = self.text_renderer.render_sample(font,collision_mask)
+        render_res = self.text_renderer.render_sample(imname,font,collision_mask)
         if render_res is None: # rendering not successful
             return #None
         else:
@@ -567,8 +567,9 @@ class RendererV3(object):
         return wordBB
 
 
-    def render_text(self,rgb,depth,seg,area,label,ninstance=1,viz=False):
+    def render_text(self,imname,rgb,depth,seg,area,label,ninstance=1,viz=False):
         """
+        imname: Key of text in name_map
         rgb   : HxWx3 image rgb values (uint8)
         depth : HxW depth values (float)
         seg   : HxW segmentation region masks
@@ -634,20 +635,21 @@ class RendererV3(object):
 
             # process regions: 
             num_txt_regions = len(reg_idx)
-            NUM_REP = 5 # re-use each region three times:
+            NUM_REP = 1 # re-use each region 1x:
             reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
             for idx in reg_range:
+                # img[seg == 1] = [0,255,0] #TODO
                 ireg = reg_idx[idx]
 #                print(place_masks[0].shape, place_masks[0].dtype)
 #                img[place_masks[ireg] == 255] = [0,255,0] #TODO
                 try:
                     if self.max_time is None:
-                        txt_render_res = self.place_text(img,place_masks[ireg],
+                        txt_render_res = self.place_text(imname,img,place_masks[ireg],
                                                          regions['homography'][ireg],
                                                          regions['homography_inv'][ireg])
                     else:
                         with time_limit(self.max_time):
-                            txt_render_res = self.place_text(img,place_masks[ireg],
+                            txt_render_res = self.place_text(imname,img,place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
                 except ValueError as msg:

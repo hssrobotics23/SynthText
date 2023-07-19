@@ -5,6 +5,7 @@ import scipy.io as sio
 import os.path as osp
 import random, os
 import cv2
+import re
 #import cPickle as cp
 import _pickle as cp
 import scipy.signal as ssig
@@ -80,12 +81,11 @@ class RenderFont(object):
         Also, outputs ground-truth bounding boxes and text string
     """
 
-    def __init__(self, data_dir='data'):
+    def __init__(self, name_map, data_dir='data'):
         # distribution over the type of text:
         # whether to get a single word, paragraph or a line:
-        self.p_text = {1.0 : 'WORD',
-                       0.0 : 'LINE',
-                       0.0 : 'PARA'}
+        self.p_text = {0.0 : 'WORD',
+                       1.0 : 'LINE'}
 
         ## TEXT PLACEMENT PARAMETERS:
         self.f_shrink = 0.90
@@ -102,8 +102,7 @@ class RenderFont(object):
         self.baselinestate = BaselineState()
 
         # text-source : gets english text:
-        self.text_source = TextSource(min_nchar=self.min_nchar,
-                                      fn=osp.join(data_dir,'newsgroup/newsgroup.txt'))
+        self.text_source = TextSource(name_map, min_nchar=self.min_nchar)
 
         # get font-state object:
         self.font_state = FontState(data_dir)
@@ -158,9 +157,10 @@ class RenderFont(object):
 
         # crop the surface to fit the text:
         bbs = np.array(bbs)
+
         surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=5)
         surf_arr = surf_arr.swapaxes(0,1)
-        #self.visualize_bb(surf_arr,bbs)
+        self.visualize_bb(surf_arr,bbs) #TODO
         return surf_arr, words, bbs
 
     def render_curved(self, font, word_text):
@@ -171,7 +171,8 @@ class RenderFont(object):
         isword = len(word_text.split())==1
 
         # do curved iff, the length of the word <= 10
-        if not isword or wl > 10 or np.random.rand() > self.p_curved:
+        #if not isword or wl > 10 or np.random.rand() > self.p_curved:
+        if True:
             return self.render_multiline(font, word_text)
 
         # create the surface:
@@ -185,6 +186,7 @@ class RenderFont(object):
         BS = self.baselinestate.get_sample()
         curve = [BS['curve'](i-mid_idx) for i in range(wl)]
         curve[mid_idx] = -np.sum(curve) / (wl-1)
+        rots  = [-int(math.degrees(math.atan(BS['diff'](i-mid_idx)/(font.size/2)))) for i in range(wl)]
 
         bbs = []
         # place middle char
@@ -320,7 +322,7 @@ class RenderFont(object):
         return coords
 
 
-    def render_sample(self,font,mask):
+    def render_sample(self,imname,font,mask):
         """
         Places text in the "collision-free" region as indicated
         in the mask -- 255 for unsafe, 0 for safe.
@@ -363,7 +365,7 @@ class RenderFont(object):
 
             # sample text:
             text_type = sample_weighted(self.p_text)
-            text = self.text_source.sample(nline,nchar,text_type)
+            text = self.text_source.sample(imname,nchar,text_type)
             if len(text)==0 or np.any([len(line)==0 for line in text]):
                 continue
             #print colorize(Color.GREEN, text)
@@ -377,21 +379,20 @@ class RenderFont(object):
                 #warn("text-array is bigger than mask")
                 continue
 
-            print('bb', bb.shape, np.min(bb), np.max(bb)) #TODO
-
             # position the text within the mask:
             text_mask,loc,bb, _ = self.place_text([txt_arr], mask, [bb])
             if len(loc) > 0:#successful in placing the text collision-free:
                 return text_mask,loc[0],bb[0],text
+
         return #None
 
 
     def visualize_bb(self, text_arr, bbs):
         ta = text_arr.copy()
         for r in bbs:
-            cv.rectangle(ta, (r[0],r[1]), (r[0]+r[2],r[1]+r[3]), color=128, thickness=1)
-        plt.imshow(ta,cmap='gray')
-        plt.show()
+            cv2.rectangle(ta, (r[0],r[1]), (r[0]+r[2],r[1]+r[3]), color=255, thickness=20)
+
+        text_arr[:] = ta
 
 
 class FontState(object):
@@ -512,160 +513,30 @@ class FontState(object):
 
 class TextSource(object):
     """
-    Provides text for words, paragraphs, sentences.
+    Provides text for words, sentences.
     """
-    def __init__(self, min_nchar, fn):
+    def __init__(self, name_map, min_nchar):
         """
         TXT_FN : path to file containing text data.
         """
+        self.name_map = name_map
         self.min_nchar = min_nchar
         self.fdict = {'WORD':self.sample_word,
-                      'LINE':self.sample_line,
-                      'PARA':self.sample_para}
+                      'LINE':self.sample_line}
 
-        with open(fn,'r') as f:
-            self.txt = [l.strip() for l in f.readlines()]
-
-        # distribution over line/words for LINE/PARA:
-        self.p_line_nline = np.array([0.85, 0.10, 0.05])
-        self.p_line_nword = [4,3,12]  # normal: (mu, std)
-        self.p_para_nline = [1.0,1.0]#[1.7,3.0] # beta: (a, b), max_nline
-        self.p_para_nword = [1.7,3.0,10] # beta: (a,b), max_nword
-
-        # probability to center-align a paragraph:
-        self.center_para = 0.5
-
-
-    def check_symb_frac(self, txt, f=0.35):
-        """
-        T/F return : T iff fraction of symbol/special-charcters in
-                     txt is less than or equal to f (default=0.25).
-        """
-        return np.sum([not ch.isalnum() for ch in txt])/(len(txt)+0.0) <= f
-
-    def is_good(self, txt, f=0.35):
-        """
-        T/F return : T iff the lines in txt (a list of txt lines)
-                     are "valid".
-                     A given line l is valid iff:
-                         1. It is not empty.
-                         2. symbol_fraction > f
-                         3. Has at-least self.min_nchar characters
-                         4. Not all characters are i,x,0,O,-
-        """
-        def is_txt(l):
-            char_ex = ['i','I','o','O','0','-']
-            chs = [ch in char_ex for ch in l]
-            return not np.all(chs)
-
-        return [ (len(l)> self.min_nchar
-                 and self.check_symb_frac(l,f)
-                 and is_txt(l)) for l in txt ]
-
-    def center_align(self, lines):
-        """
-        PADS lines with space to center align them
-        lines : list of text-lines.
-        """
-        ls = [len(l) for l in lines]
-        max_l = max(ls)
-        for i in range(len(lines)):
-            l = lines[i].strip()
-            dl = max_l-ls[i]
-            lspace = dl//2
-            rspace = dl-lspace
-            lines[i] = ' '*lspace+l+' '*rspace
-        return lines
-
-    def get_lines(self, nline, nword, nchar_max, f=0.35, niter=100):
-        def h_lines(niter=100):
-            lines = ['']
-            iter = 0
-            while not np.all(self.is_good(lines,f)) and iter < niter:
-                iter += 1
-                line_start = np.random.choice(len(self.txt)-nline)
-                lines = [self.txt[line_start+i] for i in range(nline)]
-            return lines
-
-        lines = ['']
-        iter = 0
-        while not np.all(self.is_good(lines,f)) and iter < niter:
-            iter += 1
-            lines = h_lines(niter=100)
-            # get words per line:
-            nline = len(lines)
-            for i in range(nline):
-                words = lines[i].split()
-                dw = len(words)-nword[i]
-                if dw > 0:
-                    first_word_index = random.choice(range(dw+1))
-                    lines[i] = ' '.join(words[first_word_index:first_word_index+nword[i]])
-
-                while len(lines[i]) > nchar_max: #chop-off characters from end:
-                    if not np.any([ch.isspace() for ch in lines[i]]):
-                        lines[i] = ''
-                    else:
-                        lines[i] = lines[i][:len(lines[i])-lines[i][::-1].find(' ')].strip()
+    def sample(self,imname,nchar_max,kind='WORD'):
+        return self.fdict[kind](imname,nchar_max)
         
-        if not np.all(self.is_good(lines,f)):
-            return #None
+    def sample_word(self,imname,nchar_max):
+        found = re.search(r"spice-(.+)", imname)
+        key = found.groups(1)[0] if found else imname
+        word = self.name_map.get(key, key)
+
+        if len(word)>nchar_max:
+            return word[:nchar_max]
         else:
-            return lines
+            return word
 
-    def sample(self, nline_max,nchar_max,kind='WORD'):
-        return self.fdict[kind](nline_max,nchar_max)
-        
-    def sample_word(self,nline_max,nchar_max,niter=100):
-        print('Writing hello')
-        return 'hello' #TODO
-        rand_line = self.txt[np.random.choice(len(self.txt))]                
-        words = rand_line.split()
-        rand_word = random.choice(words)
-
-        iter = 0
-        while iter < niter and (not self.is_good([rand_word])[0] or len(rand_word)>nchar_max):
-            rand_line = self.txt[np.random.choice(len(self.txt))]                
-            words = rand_line.split()
-            rand_word = random.choice(words)
-            iter += 1
-
-        if not self.is_good([rand_word])[0] or len(rand_word)>nchar_max:
-            return []
-        else:
-            return rand_word
-
-
-    def sample_line(self,nline_max,nchar_max):
-        nline = nline_max+1
-        while nline > nline_max:
-            nline = np.random.choice([1,2,3], p=self.p_line_nline)
-
-        # get number of words:
-        nword = [self.p_line_nword[2]*sstat.beta.rvs(a=self.p_line_nword[0], b=self.p_line_nword[1])
-                 for _ in range(nline)]
-        nword = [max(1,int(np.ceil(n))) for n in nword]
-
-        lines = self.get_lines(nline, nword, nchar_max, f=0.35)
-        if lines is not None:
-            return '\n'.join(lines)
-        else:
-            return []
-
-    def sample_para(self,nline_max,nchar_max):
-        # get number of lines in the paragraph:
-        nline = nline_max*sstat.beta.rvs(a=self.p_para_nline[0], b=self.p_para_nline[1])
-        nline = max(1, int(np.ceil(nline)))
-
-        # get number of words:
-        nword = [self.p_para_nword[2]*sstat.beta.rvs(a=self.p_para_nword[0], b=self.p_para_nword[1])
-                 for _ in range(nline)]
-        nword = [max(1,int(np.ceil(n))) for n in nword]
-
-        lines = self.get_lines(nline, nword, nchar_max, f=0.35)
-        if lines is not None:
-            # center align the paragraph-text:
-            if np.random.rand() < self.center_para:
-                lines = self.center_align(lines)
-            return '\n'.join(lines)
-        else:
-            return []
+    def sample_line(self,imname,nchar_max):
+        line = self.sample_word(imname,nchar_max)
+        return line
