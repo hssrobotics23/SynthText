@@ -160,7 +160,7 @@ class RenderFont(object):
 
         surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=5)
         surf_arr = surf_arr.swapaxes(0,1)
-        self.visualize_bb(surf_arr,bbs) #TODO
+#        self.visualize_bb(surf_arr,bbs) #TODO
         return surf_arr, words, bbs
 
     def render_curved(self, font, word_text):
