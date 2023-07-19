@@ -8,7 +8,6 @@ Main script for synthetic text rendering.
 from __future__ import division
 import copy
 import cv2
-import h5py
 from PIL import Image
 import numpy as np 
 #import mayavi.mlab as mym
@@ -658,6 +657,10 @@ class RendererV3(object):
                             txt_render_res = self.place_text(img,place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
+                except ValueError as msg:
+                    print ('ValueError')
+                    print (msg)
+                    continue
                 except TimeoutException as msg:
                     print (msg)
                     continue
