@@ -42,7 +42,7 @@ def crop_safe(arr, rect, bbs=[], pad=0):
     """
     rect = np.array(rect)
     rect[:2] -= pad
-    rect[2:] += 2*pad
+    rect[2:] += pad
     v0 = [max(0,rect[0]), max(0,rect[1])]
     v1 = [min(arr.shape[0], rect[0]+rect[2]), min(arr.shape[1], rect[1]+rect[3])]
     arr = arr[v0[0]:v1[0],v0[1]:v1[1],...]
@@ -89,12 +89,11 @@ class RenderFont(object):
 
         ## TEXT PLACEMENT PARAMETERS:
         self.f_shrink = 0.90
-        self.max_shrink_trials = 5 # 0.9^5 ~= 0.6
+        self.max_shrink_trials = 8 # 0.9^5 ~= 0.6
         # the minimum number of characters that should fit in a mask
         # to define the maximum font height.
-        self.min_nchar = 2
-        self.min_font_h = 16 #px : 0.6*12 ~ 7px <= actual minimum height
-        self.max_font_h = 120 #px
+        self.min_font_h = 20 #px : 0.6*12 ~ 7px <= actual minimum height
+        self.max_font_h = 180 #px
         self.p_flat = 0.10
 
         # curved baseline:
@@ -102,7 +101,7 @@ class RenderFont(object):
         self.baselinestate = BaselineState()
 
         # text-source : gets english text:
-        self.text_source = TextSource(name_map, min_nchar=self.min_nchar)
+        self.text_source = TextSource(name_map)
 
         # get font-state object:
         self.font_state = FontState(data_dir)
@@ -158,7 +157,7 @@ class RenderFont(object):
         # crop the surface to fit the text:
         bbs = np.array(bbs)
 
-        surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=5)
+        surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=2)
         surf_arr = surf_arr.swapaxes(0,1)
 #        self.visualize_bb(surf_arr,bbs) #TODO
         return surf_arr, words, bbs
@@ -186,7 +185,6 @@ class RenderFont(object):
         BS = self.baselinestate.get_sample()
         curve = [BS['curve'](i-mid_idx) for i in range(wl)]
         curve[mid_idx] = -np.sum(curve) / (wl-1)
-        rots  = [-int(math.degrees(math.atan(BS['diff'](i-mid_idx)/(font.size/2)))) for i in range(wl)]
 
         bbs = []
         # place middle char
@@ -293,8 +291,8 @@ class RenderFont(object):
     def robust_HW(self,mask):
         m = mask.copy()
         m = (~mask).astype('float')/255
-        rH = np.median(np.sum(m,axis=0))
-        rW = np.median(np.sum(m,axis=1))
+        rH = np.max(np.sum(m,axis=0))
+        rW = np.max(np.sum(m,axis=1))
         return rH,rW
 
     def sample_font_height_px(self,h_min,h_max):
@@ -332,12 +330,19 @@ class RenderFont(object):
         H,W = self.robust_HW(mask)
         f_asp = self.font_state.get_aspect_ratio(font)
 
+        text_type = sample_weighted(self.p_text)
+        text = self.text_source.sample(imname,text_type)
+        max_n_char = max([len(t) for t in text.split('\n')])
+
+        scaling = 1.25
+        max_font_h = min(0.9*H, (1/f_asp)*W/(max_n_char))
+        max_font_h = scaling * min(max_font_h, self.max_font_h)
+
         # find the maximum height in pixels:
-        max_font_h = min(0.9*H, (1/f_asp)*W/(self.min_nchar+1))
-        max_font_h = min(max_font_h, self.max_font_h)
         if max_font_h < self.min_font_h: # not possible to place any text here
             return #None
 
+        print('max_font_h', max_font_h)
         # let's just place one text-instance for now
         ## TODO : change this to allow multiple text instances?
         i = 0
@@ -345,27 +350,23 @@ class RenderFont(object):
             # if i > 0:
             #     print colorize(Color.BLUE, "shrinkage trial : %d"%i, True)
 
-            # sample a random font-height:
             f_h_px = self.sample_font_height_px(self.min_font_h, max_font_h)
-            #print "font-height : %.2f (min: %.2f, max: %.2f)"%(f_h_px, self.min_font_h,max_font_h)
-            # convert from pixel-height to font-point-size:
             f_h = self.font_state.get_font_size(font, f_h_px)
 
             # update for the loop
             max_font_h = f_h_px 
             i += 1
 
+            print('f_h_px', f_h)
             font.size = f_h # set the font-size
 
             # compute the max-number of lines/chars-per-line:
             nline,nchar = self.get_nline_nchar(mask.shape[:2],f_h,f_h*f_asp)
             #print "  > nline = %d, nchar = %d"%(nline, nchar)
 
-            assert nline >= 1 and nchar >= self.min_nchar
+            assert nline >= 1 and nchar >= max_n_char 
 
             # sample text:
-            text_type = sample_weighted(self.p_text)
-            text = self.text_source.sample(imname,nchar,text_type)
             if len(text)==0 or np.any([len(line)==0 for line in text]):
                 continue
             #print colorize(Color.GREEN, text)
@@ -515,28 +516,24 @@ class TextSource(object):
     """
     Provides text for words, sentences.
     """
-    def __init__(self, name_map, min_nchar):
+    def __init__(self, name_map):
         """
         TXT_FN : path to file containing text data.
         """
         self.name_map = name_map
-        self.min_nchar = min_nchar
         self.fdict = {'WORD':self.sample_word,
                       'LINE':self.sample_line}
 
-    def sample(self,imname,nchar_max,kind='WORD'):
-        return self.fdict[kind](imname,nchar_max)
+    def sample(self,imname,kind='WORD'):
+        return self.fdict[kind](imname)
         
-    def sample_word(self,imname,nchar_max):
+    def sample_word(self,imname):
         found = re.search(r"spice-(.+)", imname)
         key = found.groups(1)[0] if found else imname
         word = self.name_map.get(key, key)
 
-        if len(word)>nchar_max:
-            return word[:nchar_max]
-        else:
-            return word
+        return word
 
-    def sample_line(self,imname,nchar_max):
-        line = self.sample_word(imname,nchar_max)
-        return line
+    def sample_line(self,imname):
+        line = self.sample_word(imname)
+        return '\n'.join(line.split(' '))

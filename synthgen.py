@@ -47,14 +47,14 @@ class TextRegions(object):
         """
         mask : 1 where "ON", 0 where "OFF"
         """
-        wx = np.median(np.sum(mask,axis=0))
-        wy = np.median(np.sum(mask,axis=1))
+        wx = np.max(np.sum(mask,axis=0))
+        wy = np.max(np.sum(mask,axis=1))
         return wx>TextRegions.minW and wy>TextRegions.minW
 
     @staticmethod
     def get_hw(pt):
         pt = pt.copy()
-        mu = np.median(pt,axis=0)
+        mu = np.max(pt,axis=0)
         pt = (pt-mu[None,:]) + mu[None,:]
         h,w = np.max(pt,axis=0) - np.min(pt,axis=0)
         return h,w
@@ -638,7 +638,7 @@ class RendererV3(object):
             NUM_REP = 1 # re-use each region 1x:
             reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
             for idx in reg_range:
-                # img[seg == 1] = [0,255,0] #TODO
+#                img[seg == 1] = [0,255,0] #TODO
                 ireg = reg_idx[idx]
 #                print(place_masks[0].shape, place_masks[0].dtype)
 #                img[place_masks[ireg] == 255] = [0,255,0] #TODO

@@ -89,36 +89,29 @@ name_map = {
 }
 
 
-def contour_area(contours):
+def max_contour(contours):
 
     # create an empty list
     cnt_area = []
+    cnt_out = []
      
     # loop through all the contours
     for i in range(0,len(contours),1):
         # for each contour, use OpenCV to calculate the area of the contour
         cnt_area.append(cv2.contourArea(contours[i]))
+        cnt_out.append(contours[i])
  
-    # Sort our list of contour areas in descending order
-    list.sort(cnt_area, reverse=True)
-    return cnt_area
+    max_index = cnt_area.index(max(cnt_area))
+    return cnt_out[max_index]
 
-def to_bounding_box(contours, n_boxes=1):
+def to_bounding_box(contours):
 
-    # Call our function to get the list of contour areas
-    cnt_area = contour_area(contours)
- 
-    # Loop through each contour of our image
-    for i in range(0,len(contours),1):
-        cnt = contours[i]
- 
-        # Only draw the the largest number of boxes
-        maximum = cnt_area[min(n_boxes, len(cnt_area))-1]
-        if (cv2.contourArea(cnt) >= maximum):
-             
-            # Use OpenCV boundingRect function to get the details of the contour
-            x,y,w,h = cv2.boundingRect(cnt)
-            yield (x, y, x + w, y + h)
+    # Call our function to get the max contour area
+    cnt = max_contour(contours)
+     
+    # Use OpenCV boundingRect function to get the details of the contour
+    x,y,w,h = cv2.boundingRect(cnt)
+    return (x, y, x + w, y + h)
 
 def get_data(folder):
     paths = glob.glob(osp.join(folder, '*mask.png'))
@@ -130,27 +123,28 @@ def get_data(folder):
     }
     for path in paths:
         im = Image.open(path)
-        arr = np.asarray(im)
+        arr = np.asarray(im).copy()
 
         # Key for name lookup
         f_name = Path(path).name
         found = re.search(r"(prompt-.+)-mask", f_name)
         key = found.groups(1)[0] if found else f_name
 
-        # Simple image color
-        out["image"][key] = arr[:,:,:3]
-
-        # Image blur and threshhold
+        # Image threshhold
         thresh_in = (arr[:,:,3] < 127).astype(np.uint8)
         contours = cv2.findContours(thresh_in, 1, 2)[0]
 
         mask = np.zeros(thresh_in.shape, dtype=np.uint16)
       
-        for (x0, y0, x1, y1) in to_bounding_box(contours, 1):
-            mask[y0:y1, x0:x1] = 1
+        (x0, y0, x1, y1) = to_bounding_box(contours)
+        mask[y0:y1, x0:x1] = 1
+
+        # blur image under mask
+        nz = thresh_in.nonzero()
+        arr[nz,:3] = cv2.blur(arr, (32, 32))[nz,:3]
 
         out["seg"][key] = mask
-
+        out["image"][key] = arr[:,:,:3]
         within = np.count_nonzero(mask)
         out["area"][key] = np.uint32([within])
         out["label"][key] = np.uint16([1])

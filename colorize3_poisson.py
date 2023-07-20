@@ -91,10 +91,10 @@ class FontColor(object):
         col2 = self.sample_normal(data_col[6:9],data_col[9:12])
 
         if nn < self.ncol:
-            return (col2, col1)
+            return ((0, 0, 0), col1)
         else:
             # need to swap to make the second color close to the input backgroun color
-            return (col1, col2)
+            return ((0, 0, 0), col2)
 
     def mean_color(self, arr):
         col = cv.cvtColor(arr, cv.COLOR_RGB2HSV)
@@ -305,6 +305,7 @@ class Colorize(object):
         """
         bg_col,fg_col,i = 0,0,0
         fg_col,bg_col = self.font_color.sample_from_data(bg_arr)
+        print('fg', fg_col, 'bg', bg_col)
         return Layer(alpha=text_arr, color=fg_col), fg_col, bg_col
 
 
