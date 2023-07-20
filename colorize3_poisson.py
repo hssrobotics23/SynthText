@@ -245,12 +245,11 @@ class Colorize(object):
         """
         pass
 
-    def color_border(self, fg_col):
+    def color_border(self, fg_lightness):
         """
         Decide on a color for the border:
         """
-        lightness = cv.cvtColor(np.uint8([fg_col])[None], cv.COLOR_RGB2Lab)[0,0,0]
-        return np.uint8((255,255,255) if lightness < 127 else (0,0,0))
+        return np.uint8((255,255,255) if fg_lightness < 127 else (0,0,0))
 
     def color_text(self, text_arr, h, bg_arr):
         """
@@ -278,6 +277,7 @@ class Colorize(object):
         """
         # decide on a color for the text:
         l_text, fg_col, bg_col = self.color_text(text_arr, min_h, bg_arr)
+        fg_lightness = cv.cvtColor(np.uint8([fg_col])[None], cv.COLOR_RGB2Lab)[0,0,0]
         bg_col = np.mean(np.mean(bg_arr,axis=0),axis=0)
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'),color=bg_col)
 
@@ -299,7 +299,7 @@ class Colorize(object):
             elif 15 < min_h < 30: bsz = 2
             else: bsz = 4
             border_a = self.border(l_text.alpha, size=bsz)
-            l_border = Layer(border_a, self.color_border(fg_col))
+            l_border = Layer(border_a, self.color_border(fg_lightness))
             layers.append(l_border)
 
         # add shadow:
@@ -325,13 +325,16 @@ class Colorize(object):
             layers.append(l_shadow)
         
 
-        l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_col)
-        layers.append(l_bg)
+        layers.append(Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_col))
         l_normal = self.merge_down(layers)
-        l_normal_out = cv.convertScaleAbs(l_normal.color, alpha=1.5, beta=0)
-        # now do poisson image editing:
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_arr)
-        l_out =  blit_images(l_normal_out,l_bg.color.copy())
+
+        if fg_lightness < 127:
+            l_normal_out = cv.convertScaleAbs(l_normal.color, alpha=1.5, beta=0)
+            l_out =  blit_images(l_normal_out,l_bg.color.copy())
+        else:
+            l_normal_out = l_normal.color
+            l_out =  blit_images(l_normal_out,l_bg.color.copy())
         
         # plt.subplot(1,3,1)
         # plt.imshow(l_normal.color)
@@ -376,7 +379,7 @@ class Colorize(object):
         print ("color diff percentile :", diff)
         return diff, (bgo,txto)
 
-    def color(self, bg_arr, text_arr, hs, place_order=None, pad=20):
+    def color(self, bg_arr, text_arr, hs, place_order=None, x_pad=30, y_pad=5):
         """
         Return colorized text image.
 
@@ -393,6 +396,7 @@ class Colorize(object):
 
         # get the canvas size:
         canvas_sz = np.array(bg_arr.shape[:2])
+        max_h, max_w = canvas_sz
 
         # initialize the placement order:
         if place_order is None:
@@ -411,19 +415,19 @@ class Colorize(object):
 
             # figure out padding:
             ext = canvas_sz - (l+m)
-            num_pad = pad*np.ones(4,dtype='int32')
-            num_pad[:2] = np.minimum(num_pad[:2], l)
-            num_pad[2:] = np.minimum(num_pad[2:], ext)
+            num_pad = np.ones(4,dtype='int32')
+            num_pad[:2] = np.minimum(num_pad[:2] * y_pad, l)
+            num_pad[2:] = np.minimum(num_pad[2:] * x_pad, ext)
             text_patch = np.pad(text_patch, pad_width=((num_pad[0],num_pad[2]), (num_pad[1],num_pad[3])), mode='constant')
             l -= num_pad[:2]
 
-            w,h = text_patch.shape
-            bg = bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:]
+            h,w = text_patch.shape
+            bg = bg_arr[l[0]:l[0]+h,l[1]:l[1]+w,:]
 
             rdr0 = self.process(text_patch, bg, hs[i])
             rendered.append(rdr0)
 
-            bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:] = rdr0#rendered[-1]
+            bg_arr[l[0]:l[0]+h,l[1]:l[1]+w,:] = rdr0#rendered[-1]
 
 
             return bg_arr

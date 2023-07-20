@@ -30,19 +30,18 @@ def move_bb(bbs, t):
     """
     return bbs + t[:,None,None]
 
-def crop_safe(arr, rect, bbs=[], pad=0):
+def crop_safe(arr, rect, bbs=[], x_pad=30, y_pad=5):
     """
     ARR : arr to crop
     RECT: (x,y,w,h) : area to crop to
     BBS : nx4 xywh format bounding-boxes
-    PAD : percentage to pad
 
     Does safe cropping. Returns the cropped rectangle and
     the adjusted bounding-boxes
     """
     rect = np.array(rect)
-    rect[:2] -= pad
-    rect[2:] += pad
+    rect[:2] -= y_pad
+    rect[2:] += x_pad
     v0 = [max(0,rect[0]), max(0,rect[1])]
     v1 = [min(arr.shape[0], rect[0]+rect[2]), min(arr.shape[1], rect[1]+rect[3])]
     arr = arr[v0[0]:v1[0],v0[1]:v1[1],...]
@@ -96,6 +95,7 @@ class RenderFont(object):
         # get the number of lines
         lines = text.split('\n')
         lengths = [len(l) for l in lines]
+        space = font.get_rect('O')
 
         # font parameters:
         line_spacing = font.get_sized_height() + 1
@@ -106,11 +106,24 @@ class RenderFont(object):
         surf = pygame.Surface(fsize, pygame.locals.SRCALPHA, 32)
 
         bbs = []
-        space = font.get_rect('O')
         x, y = 0, 0
         for l in lines:
             x = 0 # carriage-return
             y += line_spacing # line-feed
+
+            # Quick kerning hack
+            kernings = []
+            ch_widths = []
+            for ch in l:
+                ch_bounds = font.render_to(surf, (0,0), ch)
+                ch_widths.append(ch_bounds.width)
+
+            for (i, ch) in enumerate(l):
+                if i == 0 or l[i-1].isspace() or l[i].isspace():
+                    kernings.append(space.width * font.char_spacing)
+                    continue
+                mean_width = (ch_widths[i] + ch_widths[i-1])/2
+                kernings.append(mean_width * font.char_spacing)
 
             for ch in l: # render each character
                 if ch.isspace(): # just shift
@@ -118,9 +131,9 @@ class RenderFont(object):
                 else:
                     # render the character
                     ch_bounds = font.render_to(surf, (x,y), ch)
-                    ch_bounds.x = x + ch_bounds.x
+                    ch_bounds.x = x + ch_bounds.x + kernings[i]
                     ch_bounds.y = y - ch_bounds.y
-                    x += ch_bounds.width
+                    x += ch_bounds.width + kernings[i]
                     bbs.append(np.array(ch_bounds))
 
         # get the union of characters for cropping:
@@ -133,7 +146,8 @@ class RenderFont(object):
         # crop the surface to fit the text:
         bbs = np.array(bbs)
 
-        surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=2)
+        #text_arrs[i][:32,:] = np.clip(120 - 0.5*cv2.convertScaleAbs(text_arrs[i][:32,:], 0.5), 80, 180)
+        surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs)
         surf_arr = surf_arr.swapaxes(0,1)
 #        self.visualize_bb(surf_arr,bbs) #TODO
         return surf_arr, bbs 
@@ -168,14 +182,13 @@ class RenderFont(object):
 
             minloc = np.transpose(np.nonzero(safemask))
             loc = minloc[np.random.choice(minloc.shape[0]),:]
-            locs[i] = loc
 
-            # update the bounding-boxes:
             bbs[i] = move_bb(bbs[i],loc[::-1])
 
             # blit the text onto the canvas
-            w,h = text_arrs[i].shape
-            out_arr[loc[0]:loc[0]+w,loc[1]:loc[1]+h] += text_arrs[i]
+            h,w = text_arrs[i].shape
+            out_arr[loc[0]:loc[0]+h,loc[1]:loc[1]+w] += text_arrs[i][:h,:w]
+
 
         return out_arr, locs, bbs, order
 
@@ -208,6 +221,7 @@ class RenderFont(object):
         The text is rendered using FONT, the text content is TEXT.
         """
         #H,W = mask.shape
+        space = font.get_rect('O')
         H,W = self.robust_HW(mask)
         f_asp = self.font_state.get_aspect_ratio(font)
 
@@ -279,15 +293,10 @@ class FontState(object):
     Defines the random state of the font rendering  
     """
     size = [200, 10]  # normal dist mean, std
-    underline = 0.05
     strong = 0.5
     wide = 0.5
     strength = [0.03, 0.01]  # uniform dist in this interval
-    underline_adjustment = [1.0, 2.0]  # normal dist mean, std
-    kerning = [2, 5, 0, 20]  # beta distribution alpha, beta, offset, range (mean is a/(a+b))
     capsmode = [str.lower, str.upper, str.capitalize]  # lower case, upper case, proper noun
-    random_kerning = 0.2
-    random_kerning_amount = 0.1
 
     def __init__(self, data_dir='data'):
 
@@ -355,14 +364,10 @@ class FontState(object):
         return {
             'font': self.fonts[int(np.random.randint(0, len(self.fonts)))],
             'size': self.size[1]*np.random.randn() + self.size[0],
-            'underline': np.random.rand() < self.underline,
-            'underline_adjustment': max(2.0, min(-2.0, self.underline_adjustment[1]*np.random.randn() + self.underline_adjustment[0])),
             'strong': np.random.rand() < self.strong,
             'strength': (self.strength[1] - self.strength[0])*np.random.rand() + self.strength[0],
-            'char_spacing': int(self.kerning[3]*(np.random.beta(self.kerning[0], self.kerning[1])) + self.kerning[2]),
-            'capsmode': random.choice(self.capsmode),
-            'random_kerning': np.random.rand() < self.random_kerning,
-            'random_kerning_amount': self.random_kerning_amount,
+            'char_spacing': 0.2 + 0.05 * np.random.rand(),
+            'capsmode': random.choice(self.capsmode)
         }
 
     def init_font(self,fs):
@@ -371,11 +376,9 @@ class FontState(object):
         FS : font-state sample
         """
         font = freetype.Font(fs['font'], size=fs['size'])
-        font.underline = fs['underline']
-        font.underline_adjustment = fs['underline_adjustment']
+        font.char_spacing = fs['char_spacing']
         font.strong = fs['strong']
         font.strength = fs['strength']
-        char_spacing = fs['char_spacing']
         font.antialiased = True
         font.origin = True
         return font

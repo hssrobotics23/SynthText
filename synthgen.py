@@ -509,7 +509,7 @@ class RendererV3(object):
         min_h = self.get_min_h(bb,text)
 
         #feathering:
-        text_mask = self.feather(text_mask, min_h)
+#        text_mask = self.feather(text_mask, min_h)
 
         im_final = self.colorizer.color(rgb,[text_mask],np.array([min_h]))
 

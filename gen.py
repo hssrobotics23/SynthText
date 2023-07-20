@@ -44,7 +44,7 @@ name_map = {
     'black pepper': 'pepper',
     'carom seeds': 'carom',
     'cayenne pepper': 'cayenne',
-    'chinese five spice powder': 'Chinese 5-spice',
+    'chinese five spice powder': 'Chinese five spice',
     'chipotle powder': 'chipotle',
     'cream of tartar': 'tartar',
     'curry powder': 'curry',
@@ -167,7 +167,7 @@ def main(folder):
       # re-size uniformly:
       sz = img_array.shape[:2][::-1]
       ones = np.ones(sz[::-1], dtype=np.float32)
-      depth = ones - .25 * to_radial(sz) 
+      depth = ones - .125 * to_radial(sz) 
       img = np.array(img.resize(sz,Image.ANTIALIAS))
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 
