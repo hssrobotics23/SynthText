@@ -399,7 +399,9 @@ class TextSource(object):
     def sample_word(self,imname):
         found = re.search(r"spice-(.+)", imname)
         key = found.groups(1)[0] if found else imname
-        word = self.name_map.get(key, key)
+        full_word = key.replace('-', ' ')
+        word = self.name_map.get(full_word, full_word)
+        print(f'{word}', '' if word == full_word else f'({full_word})')
 
         return word
 

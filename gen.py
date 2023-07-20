@@ -38,54 +38,25 @@ OUT_DIR = 'results/images'
 
 # Names
 name_map = {
-    'allspice': 'allspice',
-    'ancho-powder': 'ancho',
-    'annatto-seeds': 'annatto',
-    'baharat-seasoning': 'baharat',
-    'black-pepper': 'pepper',
-    'cardamom': 'cardamom',
-    'carom-seeds': 'carom',
-    'cayenne-pepper': 'cayenne',
-    'celery-seeds': 'celery seeds',
-    'chervil': 'chervil',
-    'chia-seeds': 'chia seeds',
-    'chili-powder': 'chili powder',
-    'chinese-five-spice-powder': 'Chinese 5 spice',
-    'chipotle-powder': 'chipotle',
-    'cinnamon': 'cinnamon',
-    'coriander': 'coriander',
-    'cumin': 'cumin',
-    'curry-powder': 'curry',
-    'dukkah': 'dukkah',
-    'fenugreek': 'fenugreek',
-    'flax-seeds': 'flax seeds',
-    'garam-masala': 'garam masala',
-    'garlic-powder': 'garlic',
-    'ginger': 'ginger',
-    'gochugaru': 'gochugaru',
-    'grains-of-paradise': 'grains of paradise',
-    'ground-cloves': 'cloves',
-    'herbes-de-provence': 'herbes de provence',
-    'kosher-salt': 'kosher salt',
-    'loomi': 'loomi',
-    'mace': 'mace',
-    'mahlab': 'mahlab',
-    'mojo-seasoning': 'Mojo',
+    'ancho powder': 'ancho',
+    'annatto seeds': 'annatto',
+    'baharat seasoning': 'baharat',
+    'black pepper': 'pepper',
+    'carom seeds': 'carom',
+    'cayenne pepper': 'cayenne',
+    'chinese five spice powder': 'Chinese 5-spice',
+    'chipotle powder': 'chipotle',
+    'cream of tartar': 'tartar',
+    'curry powder': 'curry',
+    'fennel seeds': 'fennel',
+    'garlic powder': 'garlic',
+    'ground cloves': 'cloves',
+    'mojo seasoning': 'mojo',
     'mustard-powder': 'mustard',
-    'nutmeg': 'nutmeg',
-    'old-bay-seasoning': 'Old Bay',
-    'paprika': 'paprika',
-    'pickling-salt': 'pickling salt',
-    'pickling-spice': 'pickling spice',
-    'pumpkin-pie-spice': 'pumpkin spice',
-    'ras-el-hanout': 'ras el hanout',
-    'saffron': 'saffron',
-    'sea-salt': 'sea salt',
-    'smoked-paprika': 'smoked paprika',
-    'star-anise': 'star anise',
-    'sumac': 'sumac',
-    'turmeric': 'turmeric',
-    'za-atar-seasoning': 'za\'atar'
+    'old bay seasoning': 'Old Bay',
+    'pumpkin pie spice': 'pumpkin spice',
+    'sea salt': 'sea salt',
+    'za atar seasoning': 'za\'atar'
 }
 
 
@@ -132,22 +103,23 @@ def get_data(folder):
         key = found.groups(1)[0] if found else f_name
 
         # Image threshhold
-        thresh_in = (arr[:,:,3] < 127).astype(np.uint8)
+        thresh_mask = (arr[:,:,3] < 127) 
+        thresh_in = thresh_mask.astype(np.uint8)
         contours = cv2.findContours(thresh_in, 1, 2)[0]
         if (len(contours) == 0):
             print(f'Skipping {f_name}')
             continue
 
-        mask = np.zeros(thresh_in.shape, dtype=np.uint16)
-      
+        # Select only largest contour
+        mask = np.zeros(thresh_in.shape, dtype=bool)
         (x0, y0, x1, y1) = to_bounding_box(contours)
-        mask[y0:y1, x0:x1] = 1
+        mask[y0:y1, x0:x1] = thresh_mask[y0:y1, x0:x1]
 
         # blur image under mask
         (nz_y,nz_x) = thresh_in.nonzero()
         arr[nz_y,nz_x,:] = arr_blur[nz_y,nz_x,:]
 
-        out["seg"][key] = mask
+        out["seg"][key] = np.uint16(mask)
         out["image"][key] = arr[:,:,:3]
         within = np.count_nonzero(mask)
         out["area"][key] = np.uint32([within])
