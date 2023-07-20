@@ -55,25 +55,6 @@ def crop_safe(arr, rect, bbs=[], pad=0):
         return arr
 
 
-class BaselineState(object):
-    curve = lambda this, a: lambda x: a*x*x
-    differential = lambda this, a: lambda x: 2*a*x
-    a = [0.50, 0.05]
-
-    def get_sample(self):
-        """
-        Returns the functions for the curve and differential for a and b
-        """
-        sgn = 1.0
-        if np.random.rand() < 0.5:
-            sgn = -1
-
-        a = self.a[1]*np.random.randn() + sgn*self.a[0]
-        return {
-            'curve': self.curve(a),
-            'diff': self.differential(a),
-        }
-
 class RenderFont(object):
     """
     Outputs a rasterized font sample.
@@ -88,17 +69,12 @@ class RenderFont(object):
                        1.0 : 'LINE'}
 
         ## TEXT PLACEMENT PARAMETERS:
-        self.f_shrink = 0.90
-        self.max_shrink_trials = 8 # 0.9^5 ~= 0.6
+        self.f_shrink = 0.95
+        self.max_shrink_trials = 10 # 0.9^10 ~= 0.6
         # the minimum number of characters that should fit in a mask
         # to define the maximum font height.
-        self.min_font_h = 20 #px : 0.6*12 ~ 7px <= actual minimum height
-        self.max_font_h = 180 #px
-        self.p_flat = 0.10
-
-        # curved baseline:
-        self.p_curved = 1.0
-        self.baselinestate = BaselineState()
+        self.min_font_h = 25 #px : 0.6*12 ~ 7px <= actual minimum height
+        self.max_font_h = 250 #px
 
         # text-source : gets english text:
         self.text_source = TextSource(name_map)
@@ -160,92 +136,7 @@ class RenderFont(object):
         surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=2)
         surf_arr = surf_arr.swapaxes(0,1)
 #        self.visualize_bb(surf_arr,bbs) #TODO
-        return surf_arr, words, bbs
-
-    def render_curved(self, font, word_text):
-        """
-        use curved baseline for rendering word
-        """
-        wl = len(word_text)
-        isword = len(word_text.split())==1
-
-        # do curved iff, the length of the word <= 10
-        #if not isword or wl > 10 or np.random.rand() > self.p_curved:
-        if True:
-            return self.render_multiline(font, word_text)
-
-        # create the surface:
-        lspace = font.get_sized_height() + 1
-        lbound = font.get_rect(word_text)
-        fsize = (round(2.0*lbound.width), round(3*lspace))
-        surf = pygame.Surface(fsize, pygame.locals.SRCALPHA, 32)
-
-        # baseline state
-        mid_idx = wl//2
-        BS = self.baselinestate.get_sample()
-        curve = [BS['curve'](i-mid_idx) for i in range(wl)]
-        curve[mid_idx] = -np.sum(curve) / (wl-1)
-
-        bbs = []
-        # place middle char
-        rect = font.get_rect(word_text[mid_idx])
-        rect.centerx = surf.get_rect().centerx
-        rect.centery = surf.get_rect().centery + rect.height
-        rect.centery +=  curve[mid_idx]
-        ch_bounds = font.render_to(surf, rect, word_text[mid_idx])
-        ch_bounds.x = rect.x + ch_bounds.x
-        ch_bounds.y = rect.y - ch_bounds.y
-        mid_ch_bb = np.array(ch_bounds)
-
-        # render chars to the left and right:
-        last_rect = rect
-        ch_idx = []
-        for i in range(wl):
-            #skip the middle character
-            if i==mid_idx: 
-                bbs.append(mid_ch_bb)
-                ch_idx.append(i)
-                continue
-
-            if i < mid_idx: #left-chars
-                i = mid_idx-1-i
-            elif i==mid_idx+1: #right-chars begin
-                last_rect = rect
-
-            ch_idx.append(i)
-            ch = word_text[i]
-
-            newrect = font.get_rect(ch)
-            newrect.y = last_rect.y
-            if i > mid_idx:
-                newrect.topleft = (last_rect.topright[0]+2, newrect.topleft[1])
-            else:
-                newrect.topright = (last_rect.topleft[0]-2, newrect.topleft[1])
-            newrect.centery = max(newrect.height, min(fsize[1] - newrect.height, newrect.centery + curve[i]))
-            try:
-                bbrect = font.render_to(surf, newrect, ch)
-            except ValueError:
-                bbrect = font.render_to(surf, newrect, ch)
-            bbrect.x = newrect.x + bbrect.x
-            bbrect.y = newrect.y - bbrect.y
-            bbs.append(np.array(bbrect))
-            last_rect = newrect
-        
-        # correct the bounding-box order:
-        bbs_sequence_order = [None for i in ch_idx]
-        for idx,i in enumerate(ch_idx):
-            bbs_sequence_order[i] = bbs[idx]
-        bbs = bbs_sequence_order
-
-        # get the union of characters for cropping:
-        r0 = pygame.Rect(bbs[0])
-        rect_union = r0.unionall(bbs)
-
-        # crop the surface to fit the text:
-        bbs = np.array(bbs)
-        surf_arr, bbs = crop_safe(pygame.surfarray.pixels_alpha(surf), rect_union, bbs, pad=5)
-        surf_arr = surf_arr.swapaxes(0,1)
-        return surf_arr, word_text, bbs
+        return surf_arr, bbs 
 
 
     def get_nline_nchar(self,mask_size,font_height,font_width):
@@ -295,16 +186,6 @@ class RenderFont(object):
         rW = np.max(np.sum(m,axis=1))
         return rH,rW
 
-    def sample_font_height_px(self,h_min,h_max):
-        if np.random.rand() < self.p_flat:
-            rnd = np.random.rand()
-        else:
-            rnd = np.random.beta(2.0,2.0)
-
-        h_range = h_max - h_min
-        f_h = np.floor(h_min + h_range*rnd)
-        return f_h
-
     def bb_xywh2coords(self,bbs):
         """
         Takes an nx4 bounding-box matrix specified in x,y,w,h
@@ -334,15 +215,15 @@ class RenderFont(object):
         text = self.text_source.sample(imname,text_type)
         max_n_char = max([len(t) for t in text.split('\n')])
 
-        scaling = 1.25
-        max_font_h = min(0.9*H, (1/f_asp)*W/(max_n_char))
+        scaling = 1.5
+        max_font_w = W / max_n_char
+        max_font_h = min(H, (1/f_asp)*max_font_w)
         max_font_h = scaling * min(max_font_h, self.max_font_h)
 
         # find the maximum height in pixels:
         if max_font_h < self.min_font_h: # not possible to place any text here
             return #None
 
-        print('max_font_h', max_font_h)
         # let's just place one text-instance for now
         ## TODO : change this to allow multiple text instances?
         i = 0
@@ -350,21 +231,18 @@ class RenderFont(object):
             # if i > 0:
             #     print colorize(Color.BLUE, "shrinkage trial : %d"%i, True)
 
-            f_h_px = self.sample_font_height_px(self.min_font_h, max_font_h)
+            f_h_px = max_font_h * self.f_shrink
             f_h = self.font_state.get_font_size(font, f_h_px)
 
             # update for the loop
             max_font_h = f_h_px 
             i += 1
 
-            print('f_h_px', f_h)
             font.size = f_h # set the font-size
 
             # compute the max-number of lines/chars-per-line:
             nline,nchar = self.get_nline_nchar(mask.shape[:2],f_h,f_h*f_asp)
             #print "  > nline = %d, nchar = %d"%(nline, nchar)
-
-            assert nline >= 1 and nchar >= max_n_char 
 
             # sample text:
             if len(text)==0 or np.any([len(line)==0 for line in text]):
@@ -372,7 +250,7 @@ class RenderFont(object):
             #print colorize(Color.GREEN, text)
 
             # render the text:
-            txt_arr,txt,bb = self.render_curved(font, text)
+            txt_arr,bb = self.render_multiline(font, text)
             bb = self.bb_xywh2coords(bb)
 
             # make sure that the text-array is not bigger than mask array:
@@ -400,18 +278,14 @@ class FontState(object):
     """
     Defines the random state of the font rendering  
     """
-    size = [50, 10]  # normal dist mean, std
+    size = [200, 10]  # normal dist mean, std
     underline = 0.05
     strong = 0.5
-    oblique = 0.2
     wide = 0.5
-    strength = [0.05, 0.1]  # uniform dist in this interval
+    strength = [0.03, 0.01]  # uniform dist in this interval
     underline_adjustment = [1.0, 2.0]  # normal dist mean, std
     kerning = [2, 5, 0, 20]  # beta distribution alpha, beta, offset, range (mean is a/(a+b))
-    border = 0.25
-    random_caps = -1 ## don't recapitalize : retain the capitalization of the lexicon
     capsmode = [str.lower, str.upper, str.capitalize]  # lower case, upper case, proper noun
-    curved = 0.2
     random_kerning = 0.2
     random_kerning_amount = 0.1
 
@@ -484,13 +358,9 @@ class FontState(object):
             'underline': np.random.rand() < self.underline,
             'underline_adjustment': max(2.0, min(-2.0, self.underline_adjustment[1]*np.random.randn() + self.underline_adjustment[0])),
             'strong': np.random.rand() < self.strong,
-            'oblique': np.random.rand() < self.oblique,
             'strength': (self.strength[1] - self.strength[0])*np.random.rand() + self.strength[0],
             'char_spacing': int(self.kerning[3]*(np.random.beta(self.kerning[0], self.kerning[1])) + self.kerning[2]),
-            'border': np.random.rand() < self.border,
-            'random_caps': np.random.rand() < self.random_caps,
             'capsmode': random.choice(self.capsmode),
-            'curved': np.random.rand() < self.curved,
             'random_kerning': np.random.rand() < self.random_kerning,
             'random_kerning_amount': self.random_kerning_amount,
         }
@@ -504,7 +374,6 @@ class FontState(object):
         font.underline = fs['underline']
         font.underline_adjustment = fs['underline_adjustment']
         font.strong = fs['strong']
-        font.oblique = fs['oblique']
         font.strength = fs['strength']
         char_spacing = fs['char_spacing']
         font.antialiased = True

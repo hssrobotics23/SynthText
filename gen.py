@@ -124,6 +124,7 @@ def get_data(folder):
     for path in paths:
         im = Image.open(path)
         arr = np.asarray(im).copy()
+        arr_blur = cv2.GaussianBlur(arr, (15, 15), 15)
 
         # Key for name lookup
         f_name = Path(path).name
@@ -133,6 +134,9 @@ def get_data(folder):
         # Image threshhold
         thresh_in = (arr[:,:,3] < 127).astype(np.uint8)
         contours = cv2.findContours(thresh_in, 1, 2)[0]
+        if (len(contours) == 0):
+            print(f'Skipping {f_name}')
+            continue
 
         mask = np.zeros(thresh_in.shape, dtype=np.uint16)
       
@@ -140,8 +144,8 @@ def get_data(folder):
         mask[y0:y1, x0:x1] = 1
 
         # blur image under mask
-        nz = thresh_in.nonzero()
-        arr[nz,:3] = cv2.blur(arr, (32, 32))[nz,:3]
+        (nz_y,nz_x) = thresh_in.nonzero()
+        arr[nz_y,nz_x,:] = arr_blur[nz_y,nz_x,:]
 
         out["seg"][key] = mask
         out["image"][key] = arr[:,:,:3]
@@ -152,6 +156,11 @@ def get_data(folder):
     keys = ''.join([f'"{k}"' for k in out["area"].keys()])
     print(f'loaded {keys}')
     return out
+
+def to_radial(shape):
+   Y = np.linspace(-1, 1, shape[0])[None, :]
+   X = np.linspace(-1, 1, shape[1])[:, None]
+   return np.sqrt(X**2 + Y**2)
 
 def main(folder):
   # open databases:
@@ -186,8 +195,7 @@ def main(folder):
       # re-size uniformly:
       sz = img_array.shape[:2][::-1]
       ones = np.ones(sz[::-1], dtype=np.float32)
-      noise = np.random.normal(ones, 0.1*ones)
-      depth = ones + noise 
+      depth = ones - .25 * to_radial(sz) 
       img = np.array(img.resize(sz,Image.ANTIALIAS))
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 

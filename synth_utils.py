@@ -113,7 +113,7 @@ def implicit_plot(expr, ext_grid, Nx=11, Ny=11, Nz=11,
     scalars = eval(expr)
     src = mym.pipeline.scalar_field(x, y, z, scalars)
     cont1 = mym.pipeline.iso_surface(src, color=col_isurf, contours=[0],
-                                      transparent=False, opacity=0.8)
+                                      transparent=False, opacity=1.0)
     cont1.compute_normals = False # for some reasons, setting this to true actually cause
                                   # more unevenness on the surface, instead of more smooth
     cont1.actor.property.specular = 0.2 #0.4 #0.8

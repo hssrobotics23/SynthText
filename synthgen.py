@@ -472,15 +472,14 @@ class RendererV3(object):
 
     def feather(self, text_mask, min_h):
         # determine the gaussian-blur std:
-        if min_h <= 15 :
-            bsz = 0.25
-            ksz=1
-        elif 15 < min_h < 30:
-            bsz = max(0.30, 0.5 + 0.1*np.random.randn())
-            ksz = 3
-        else:
-            bsz = max(0.5, 1.5 + 0.5*np.random.randn())
-            ksz = 5
+        if min_h <= 15 : ksz = 1
+        elif 15 < min_h < 30: ksz = 3
+        else: ksz = 5
+
+        if min_h <= 15 : bsz = .2
+        elif 15 < min_h < 30: bsz = .3
+        else: bsz = .4
+
         return cv2.GaussianBlur(text_mask,(ksz,ksz),bsz)
 
     def place_text(self,imname,rgb,collision_mask,H,Hinv):
@@ -652,10 +651,6 @@ class RendererV3(object):
                             txt_render_res = self.place_text(imname,img,place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
-                except ValueError as msg:
-                    print ('ValueError')
-                    print (msg)
-                    continue
                 except TimeoutException as msg:
                     print (msg)
                     continue

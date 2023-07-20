@@ -45,18 +45,35 @@ class Layer(object):
 class FontColor(object):
 
     def __init__(self, col_file):
-        with open(col_file,'rb') as f:
-            #self.colorsRGB = cp.load(f)
-            u = pickle._Unpickler(f)
-            u.encoding = 'latin1'
-            p = u.load()
-            self.colorsRGB = p
-        self.ncol = self.colorsRGB.shape[0]
 
-        # convert color-means from RGB to LAB for better nearest neighbour
-        # computations:
-        self.colorsLAB = np.r_[self.colorsRGB[:,0:3], self.colorsRGB[:,6:9]].astype('uint8')
-        self.colorsLAB = np.squeeze(cv.cvtColor(self.colorsLAB[None,:,:],cv.COLOR_RGB2Lab))
+        self.colorsRGB = np.uint8([
+            # black and white
+            [0, 0, 0],
+            [255, 255, 255],
+            # dark and light red
+            [27,  0, 11],
+            [21, 12, 16],
+            [253,232,241],
+            [255,165,203],
+            # dark and light brown
+            [31, 16,  0],
+            [25, 19, 14],
+            [255,245,234],
+            [255,211,165],
+            # dark and light blue
+            [ 1, 11, 20],
+            [ 9, 13, 16],
+            [230,241,250],
+            [171,217,255],
+            # dark and light green
+            [18, 29,  0],
+            [19, 23, 13],
+            [246,254,233],
+            [221,255,165]
+        ])
+        self.ncol = self.colorsRGB.shape[0]
+        colorsRGB = self.colorsRGB[None,:,:]
+        self.colorsLAB = np.squeeze(cv.cvtColor(colorsRGB,cv.COLOR_RGB2Lab))
 
 
     def sample_normal(self, col_mean, col_std):
@@ -74,27 +91,22 @@ class FontColor(object):
         returns a tuple : (RGB_foreground, RGB_background)
         each of these is a 3-vector.
         """
+
         bg_orig = bg_mat.copy()
         bg_mat = cv.cvtColor(bg_mat, cv.COLOR_RGB2Lab)
         bg_mat = np.reshape(bg_mat, (np.prod(bg_mat.shape[:2]),3))
         bg_mean = np.mean(bg_mat,axis=0)
 
         norms = np.linalg.norm(self.colorsLAB-bg_mean[None,:], axis=1)
-        # choose a random color amongst the top 3 closest matches:
-        #nn = np.random.choice(np.argsort(norms)[:3]) 
-        nn = np.argmin(norms)
+        # Closest background color
+        bg_nn = np.argmin(norms)
+        bg_col = self.colorsRGB[bg_nn] / 255
+        bg_lightness = self.colorsLAB[bg_nn][0]
 
-        ## nearest neighbour color:
-        data_col = self.colorsRGB[np.mod(nn,self.ncol),:]
-
-        col1 = self.sample_normal(data_col[:3],data_col[3:6])
-        col2 = self.sample_normal(data_col[6:9],data_col[9:12])
-
-        if nn < self.ncol:
-            return ((0, 0, 0), col1)
-        else:
-            # need to swap to make the second color close to the input backgroun color
-            return ((0, 0, 0), col2)
+        # Optimal contrast ratio
+        if bg_lightness < 127:
+            return ((255, 255, 255), bg_col)
+        return ((0, 0, 0), bg_col)
 
     def mean_color(self, arr):
         col = cv.cvtColor(arr, cv.COLOR_RGB2HSV)
@@ -152,10 +164,8 @@ class Colorize(object):
         # probabilities of different text-effects:
         self.p_bevel = 0.05 # add bevel effect to text
         self.p_outline = 0.05 # just keep the outline of the text
-        self.p_drop_shadow = 0.15
-        self.p_border = 0.15
-        self.p_displacement = 0.30 # add background-based bump-mapping
-        self.p_texture = 0.0 # use an image for coloring text
+        self.p_drop_shadow = 0.25
+        self.p_border = 0.0
 
 
     def drop_shadow(self, alpha, theta, shift, size, op=0.80):
@@ -191,10 +201,7 @@ class Colorize(object):
         border = cv.dilate(alpha,kernel,iterations=1) # - alpha
         return border
 
-    def blend(self,cf,cb,mode='normal'):
-        return cf
-
-    def merge_two(self,fore,back,blend_type=None):
+    def merge_two(self,fore,back):
         """
         merge two FOREground and BACKground layers.
         ref: https://en.wikipedia.org/wiki/Alpha_compositing
@@ -207,23 +214,15 @@ class Colorize(object):
         c_b = back.color
 
         a_r = a_f + a_b - a_f*a_b
-        if blend_type != None:
-            c_blend = self.blend(c_f, c_b, blend_type)
-            c_r = (   ((1-a_f)*a_b)[:,:,None] * c_b
-                    + ((1-a_b)*a_f)[:,:,None] * c_f
-                    + (a_f*a_b)[:,:,None] * c_blend   )
-        else:
-            c_r = (   ((1-a_f)*a_b)[:,:,None] * c_b
-                    + a_f[:,:,None]*c_f    )
+        c_r = (   ((1-a_f)*a_b)[:,:,None] * c_b
+                + a_f[:,:,None]*c_f    )
 
         return Layer((255*a_r).astype('uint8'), c_r.astype('uint8'))
 
-    def merge_down(self, layers, blends=None):
+    def merge_down(self, layers):
         """
         layers  : [l1,l2,...ln] : a list of LAYER objects.
                  l1 is on the top, ln is the bottom-most layer.
-        blend   : the type of blend to use. Should be n-1.
-                 use None for plain alpha blending.
         Note    : (1) it assumes that all the layers are of the SAME SIZE.
         @return : a single LAYER type object representing the merged-down image
         """
@@ -232,10 +231,7 @@ class Colorize(object):
             [n,m] = layers[0].alpha.shape[:2]
             out_layer = layers[-1]
             for i in range(-2,-nlayers-1,-1):
-                blend=None
-                if blends is not None:
-                    blend = blends[i+1]
-                    out_layer = self.merge_two(fore=layers[i], back=out_layer,blend_type=blend)
+                out_layer = self.merge_two(fore=layers[i], back=out_layer)
             return out_layer
         else:
             return layers[0]
@@ -249,48 +245,12 @@ class Colorize(object):
         """
         pass
 
-    def color_border(self, col_text, col_bg):
+    def color_border(self, fg_col):
         """
         Decide on a color for the border:
-            - could be the same as text-color but lower/higher 'VALUE' component.
-            - could be the same as bg-color but lower/higher 'VALUE'.
-            - could be 'mid-way' color b/w text & bg colors.
         """
-        choice = np.random.choice(3)
-
-        col_text = cv.cvtColor(col_text, cv.COLOR_RGB2HSV)
-        col_text = np.reshape(col_text, (np.prod(col_text.shape[:2]),3))
-        col_text = np.mean(col_text,axis=0).astype('uint8')
-
-        vs = np.linspace(0,1)
-        def get_sample(x):
-            ps = np.abs(vs - x/255.0)
-            ps /= np.sum(ps)
-            v_rand = np.clip(np.random.choice(vs,p=ps) + 0.1*np.random.randn(),0,1)
-            return 255*v_rand
-
-        # first choose a color, then inc/dec its VALUE:
-        if choice==0:
-            # increase/decrease saturation:
-            col_text[0] = get_sample(col_text[0]) # saturation
-            col_text = np.squeeze(cv.cvtColor(col_text[None,None,:],cv.COLOR_HSV2RGB))
-        elif choice==1:
-            # get the complementary color to text:
-            col_text = np.squeeze(cv.cvtColor(col_text[None,None,:],cv.COLOR_HSV2RGB))
-            col_text = self.font_color.complement(col_text)
-        else:
-            # choose a mid-way color:
-            col_bg = cv.cvtColor(col_bg, cv.COLOR_RGB2HSV)
-            col_bg = np.reshape(col_bg, (np.prod(col_bg.shape[:2]),3))
-            col_bg = np.mean(col_bg,axis=0).astype('uint8')
-            col_bg = np.squeeze(cv.cvtColor(col_bg[None,None,:],cv.COLOR_HSV2RGB))
-            col_text = np.squeeze(cv.cvtColor(col_text[None,None,:],cv.COLOR_HSV2RGB))
-            col_text = self.font_color.triangle_color(col_text,col_bg)
-
-        # now change the VALUE channel:        
-        col_text = np.squeeze(cv.cvtColor(col_text[None,None,:],cv.COLOR_RGB2HSV))
-        col_text[2] = get_sample(col_text[2]) # value
-        return np.squeeze(cv.cvtColor(col_text[None,None,:],cv.COLOR_HSV2RGB))
+        lightness = cv.cvtColor(np.uint8([fg_col])[None], cv.COLOR_RGB2Lab)[0,0,0]
+        return np.uint8((255,255,255) if lightness < 127 else (0,0,0))
 
     def color_text(self, text_arr, h, bg_arr):
         """
@@ -305,7 +265,6 @@ class Colorize(object):
         """
         bg_col,fg_col,i = 0,0,0
         fg_col,bg_col = self.font_color.sample_from_data(bg_arr)
-        print('fg', fg_col, 'bg', bg_col)
         return Layer(alpha=text_arr, color=fg_col), fg_col, bg_col
 
 
@@ -322,51 +281,57 @@ class Colorize(object):
         bg_col = np.mean(np.mean(bg_arr,axis=0),axis=0)
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'),color=bg_col)
 
-        l_text.alpha = l_text.alpha * np.clip(0.88 + 0.1*np.random.randn(), 0.72, 1.0)
+        # Always use border if background varies
+        bg_gray = cv.cvtColor(bg_arr, cv.COLOR_BGR2GRAY)
+        small = tuple(max(1, d // 8) for d in bg_gray.shape)
+        bg_gray_small = cv.resize(bg_gray, small, cv.INTER_LANCZOS4)
+        bg_range = np.max(bg_gray_small) - np.min(bg_gray_small)
+        # Shadow and border affected by contrast
+        p_drop_shadow = max(0.25, 1.0 - (bg_range/255))
+        p_border = min(1, 0.25 + (bg_range/255))
+
+        l_text.alpha = l_text.alpha
         layers = [l_text]
-        blends = []
 
         # add border:
-        if np.random.rand() < self.p_border:
+        if np.random.rand() < p_border:
             if min_h <= 15 : bsz = 1
-            elif 15 < min_h < 30: bsz = 3
-            else: bsz = 5
+            elif 15 < min_h < 30: bsz = 2
+            else: bsz = 4
             border_a = self.border(l_text.alpha, size=bsz)
-            l_border = Layer(border_a, self.color_border(l_text.color,l_bg.color))
+            l_border = Layer(border_a, self.color_border(fg_col))
             layers.append(l_border)
-            blends.append('normal')
 
         # add shadow:
-        if np.random.rand() < self.p_drop_shadow:
+        if np.random.rand() < p_drop_shadow:
             # shadow gaussian size:
             if min_h <= 15 : bsz = 1
-            elif 15 < min_h < 30: bsz = 3
-            else: bsz = 5
+            elif 15 < min_h < 30: bsz = 2
+            else: bsz = 4
 
             # shadow angle:
             theta = np.pi/4 * np.random.choice([1,3,5,7]) + 0.5*np.random.randn()
 
             # shadow shift:
-            if min_h <= 15 : shift = 2
-            elif 15 < min_h < 30: shift = 7+np.random.randn()
-            else: shift = 15 + 3*np.random.randn()
+            if min_h <= 15 : shift = 1
+            elif 15 < min_h < 30: shift = 5
+            else: shift = 7
 
             # opacity:
-            op = 0.50 + 0.1*np.random.randn()
+            op = 0.40 + 0.1*np.random.randn()
 
             shadow = self.drop_shadow(l_text.alpha, theta, shift, 3*bsz, op)
             l_shadow = Layer(shadow, 0)
             layers.append(l_shadow)
-            blends.append('normal')
         
 
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_col)
         layers.append(l_bg)
-        blends.append('normal')
-        l_normal = self.merge_down(layers,blends)
+        l_normal = self.merge_down(layers)
+        l_normal_out = cv.convertScaleAbs(l_normal.color, alpha=1.5, beta=0)
         # now do poisson image editing:
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_arr)
-        l_out =  blit_images(l_normal.color,l_bg.color.copy())
+        l_out =  blit_images(l_normal_out,l_bg.color.copy())
         
         # plt.subplot(1,3,1)
         # plt.imshow(l_normal.color)
@@ -381,7 +346,7 @@ class Colorize(object):
             # imperceptible text. In this case,
             # just do a normal blend:
             layers[-1] = l_bg
-            return self.merge_down(layers,blends).color
+            return self.merge_down(layers).color
 
         return l_out
 
@@ -440,7 +405,6 @@ class Colorize(object):
             loc = np.where(text_arr[i])
             lx, ly = np.min(loc[0]), np.min(loc[1])
             mx, my = np.max(loc[0]), np.max(loc[1])
-#            print('color', 'lx', lx, 'ly', ly) #TODO
             l = np.array([lx,ly])
             m = np.array([mx,my])-l+1
             text_patch = text_arr[i][l[0]:l[0]+m[0],l[1]:l[1]+m[1]]
