@@ -71,11 +71,11 @@ def main():
             # Count the new prompt index
             result = re.search(REGEX_JPG, file_name)
             groups = () if result is None else result.groups(1)
-            prompt = "" if len(groups) < 1 else count_prompt(groups[0])
+            prompt = -1 if len(groups) < 1 else count_prompt(groups[0])
             # Rename the file and store new prompt index
             new_name = f'run-{i_str}-image-{j_str}.jpg'
             image_meta["file_name"] = new_name
-            image_meta["prompt"] = prompt
+            image_meta["prompt"] = int(prompt)
             print(file_name, '->' , image_meta["file_name"])
             image_meta.update(run_info)
 
