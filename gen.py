@@ -13,6 +13,7 @@ Entry-point for generating synthetic text images, as described in:
 """
 
 import re
+import json
 import glob
 import numpy as np
 import h5py
@@ -32,6 +33,7 @@ SECS_PER_IMG = 90 #max time per image in seconds
 
 # path to the fonts etc
 DATA_PATH = 'data'
+JPEG_QUALITY = 75
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_DIR = 'results/images'
@@ -135,6 +137,9 @@ def to_radial(shape):
    return np.sqrt(X**2 + Y**2)
 
 def main(folder):
+
+  meta_data = []
+  meta_file = os.path.join(OUT_DIR, 'index.json')
   # open databases:
   print (colorize(Color.BLUE,'getting data..',bold=True))
   db = get_data(folder)
@@ -171,20 +176,42 @@ def main(folder):
       img = np.array(img.resize(sz,Image.ANTIALIAS))
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 
-      print (colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True))
+      print(colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True))
       res = RV3.render_text(imname,img,depth,seg,area,label,
                             ninstance=INSTANCE_PER_IMAGE,viz=False)
       if len(res) > 0:
         for (ri, r) in enumerate(res):
-            out_name = f'{imname}-text-{ri}.png'
+            word_verts = []
+            words = r["txt"]
+            x_points, y_points = r["wordBB"]
+            # TODO: fix this odd wordBB format!!
+            for i in range(len(words)):
+                x_val = lambda j: int(round(x_points[j][i]))
+                y_val = lambda j: int(round(y_points[j][i]))
+                word_verts.append([
+                    { "x": x_val(j), "y": y_val(j) } for j in range(4)
+                ])
+            # Each word has a four-point boundary
+            words = [
+                {"points": v, "word": w} for (v, w) in zip(word_verts, words)
+            ]
+            out_name = f'{imname}-text-{ri}.jpg'
             fname = os.path.join(OUT_DIR, out_name)
-            cv2.imwrite(fname, r["img"][:,:,::-1])
+            cv2.imwrite(fname, r["img"][:,:,::-1], [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
             print(f'Saved {out_name}')
+            meta_data.append({
+                'words': words,
+                'file_name': out_name
+            })
             # non-empty : successful in placing text:
     except:
       traceback.print_exc()
       print (colorize(Color.GREEN,'>>>> CONTINUING....', bold=True))
       continue
+
+  # Write meta
+  with open(meta_file, 'w') as wf:
+      json.dump(meta_data, wf)
 
 
 if __name__=='__main__':

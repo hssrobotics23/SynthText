@@ -73,7 +73,7 @@ class RenderFont(object):
         # the minimum number of characters that should fit in a mask
         # to define the maximum font height.
         self.min_font_h = 25 #px : 0.6*12 ~ 7px <= actual minimum height
-        self.max_font_h = 250 #px
+        self.max_font_h = 75 #px
 
         # text-source : gets english text:
         self.text_source = TextSource(name_map)
@@ -172,9 +172,10 @@ class RenderFont(object):
         for i in order:            
             ba = np.clip(back_arr.copy().astype(np.float), 0, 255)
             ta = np.clip(text_arrs[i].copy().astype(np.float), 0, 255)
-            ba[ba > 127] = 1e8
+            '''
+            ba[ba > 127] = 1e5
             intersect = ssig.fftconvolve(ba,ta[::-1,::-1],mode='valid')
-            safemask = intersect < 1e8
+            safemask = intersect < 1e5
 
             if not np.any(safemask): # no collision-free position:
                 #warn("COLLISION!!!")
@@ -182,6 +183,14 @@ class RenderFont(object):
 
             minloc = np.transpose(np.nonzero(safemask))
             loc = minloc[np.random.choice(minloc.shape[0]),:]
+            '''
+            ba_h, ba_w = ba.shape
+            ta_h, ta_w = ta.shape
+
+            # Simply center the text!
+            cy, cx = (ba_h / 2, ba_w / 2)
+            loc_list = [ cy - ta_h / 2, cx - ta_w / 2]
+            loc = np.clip(np.int32(loc_list), a_min=0, a_max=None)
 
             bbs[i] = move_bb(bbs[i],loc[::-1])
 
