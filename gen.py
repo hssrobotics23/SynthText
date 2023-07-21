@@ -27,7 +27,6 @@ import wget, tarfile
 
 
 ## Define some configuration variables:
-NUM_IMG = -1 # no. of images to use for generation (-1 to use all available):
 INSTANCE_PER_IMAGE = 1 # no. of times to use the same image
 SECS_PER_IMG = 90 #max time per image in seconds
 
@@ -151,15 +150,9 @@ def main(folder):
 
   # get the names of the image files in the dataset:
   imnames = sorted(db['image'].keys())
-  N = len(imnames)
-  global NUM_IMG
-  if NUM_IMG < 0:
-    NUM_IMG = N
-  start_idx,end_idx = 0,min(NUM_IMG, N)
 
   RV3 = RendererV3(name_map, DATA_PATH, max_time=SECS_PER_IMG)
-  for i in range(start_idx,end_idx):
-    imname = imnames[i]
+  for (i, imname) in enumerate(imnames):
     try:
       # get the image:
       img_array = db['image'][imname]
@@ -176,7 +169,7 @@ def main(folder):
       img = np.array(img.resize(sz,Image.ANTIALIAS))
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 
-      print(colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True))
+      print(colorize(Color.RED,'%d of %d'%(i+1,len(imnames)), bold=True))
       res = RV3.render_text(imname,img,depth,seg,area,label,
                             ninstance=INSTANCE_PER_IMAGE,viz=False)
       if len(res) > 0:
