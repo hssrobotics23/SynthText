@@ -175,10 +175,10 @@ def main(folder):
       if len(res) > 0:
         for (ri, r) in enumerate(res):
             word_verts = []
-            words = r["txt"]
+            lines = r["txt"]
             x_points, y_points = r["wordBB"]
             # TODO: fix this odd wordBB format!!
-            for i in range(len(words)):
+            for i in range(len(lines)):
                 x_val = lambda j: int(round(x_points[j][i]))
                 y_val = lambda j: int(round(y_points[j][i]))
                 word_verts.append([
@@ -186,7 +186,7 @@ def main(folder):
                 ])
             # Each word has a four-point boundary
             words = [
-                {"points": v, "word": w} for (v, w) in zip(word_verts, words)
+                {"points": v, "word": w} for (v, w) in zip(word_verts, lines)
             ]
             out_name = f'{imname}-text-{ri}.jpg'
             fname = os.path.join(OUT_DIR, out_name)

@@ -422,7 +422,7 @@ class RendererV3(object):
         bbs_h = np.reshape(bbs_h, (3,4,n), order='F')
         return bbs_h[:2,:,:]
 
-    def bb_filter(self,bb0,bb,text):
+    def bb_filter(self,bb0,bb,lines):
         """
         Ensure that bounding-boxes are not too distorted
         after perspective distortion.
@@ -440,7 +440,7 @@ class RendererV3(object):
         hw = np.c_[h,w]
 
         # remove newlines and spaces:
-        text = ''.join(text.split())
+        text = ''.join(lines)
         assert len(text)==bb.shape[-1]
 
         alnum = np.array([ch.isalnum() for ch in text])
@@ -458,11 +458,11 @@ class RendererV3(object):
         return is_good
 
 
-    def get_min_h(selg, bb, text):
+    def get_min_h(selg, bb, lines):
         # find min-height:
         h = np.linalg.norm(bb[:,3,:] - bb[:,0,:], axis=0)
         # remove newlines and spaces:
-        text = ''.join(text.split())
+        text = ''.join(lines)
         assert len(text)==bb.shape[-1]
 
         alnum = np.array([ch.isalnum() for ch in text])
@@ -490,7 +490,7 @@ class RendererV3(object):
         if render_res is None: # rendering not successful
             return #None
         else:
-            text_mask,loc,bb,text = render_res
+            text_mask,loc,bb,lines = render_res
 
         # update the collision mask with text:
         collision_mask += (255 * (text_mask>0)).astype('uint8')
@@ -501,19 +501,19 @@ class RendererV3(object):
         text_mask = self.warpHomography(text_mask,H,rgb.shape[:2][::-1])
         bb = self.homographyBB(bb,Hinv)
 
-        if not self.bb_filter(bb_orig,bb,text):
+        if not self.bb_filter(bb_orig,bb,lines):
             #warn("bad charBB statistics")
             return #None
 
         # get the minimum height of the character-BB:
-        min_h = self.get_min_h(bb,text)
+        min_h = self.get_min_h(bb,lines)
 
         #feathering:
 #        text_mask = self.feather(text_mask, min_h)
 
         im_final = self.colorizer.color(rgb,[text_mask],np.array([min_h]))
 
-        return im_final, text, bb, collision_mask
+        return im_final, lines, bb, collision_mask
 
 
     def get_num_text_regions(self, nregions):
@@ -525,22 +525,21 @@ class RendererV3(object):
             rnd = np.random.beta(5.0,1.0)
         return int(np.ceil(nmax * rnd))
 
-    def char2wordBB(self, charBB, text):
+    def char2wordBB(self, charBB, lines):
         """
         Converts character bounding-boxes to word-level
         bounding-boxes.
 
         charBB : 2x4xn matrix of BB coordinates
-        text   : the text string
+        lines: the lines
 
         output : 2x4xm matrix of BB coordinates,
                  where, m == number of words.
         """
-        wrds = text.split()
-        bb_idx = np.r_[0, np.cumsum([len(w) for w in wrds])]
-        wordBB = np.zeros((2,4,len(wrds)), 'float32')
+        bb_idx = np.r_[0, np.cumsum([len(l) for l in lines])]
+        wordBB = np.zeros((2,4,len(lines)), 'float32')
         
-        for i in range(len(wrds)):
+        for i in range(len(lines)):
             cc = charBB[:,:,bb_idx[i]:bb_idx[i+1]]
 
             # fit a rotated-rectangle:
@@ -661,19 +660,19 @@ class RendererV3(object):
 
                 if txt_render_res is not None:
                     placed = True
-                    img,text,bb,collision_mask = txt_render_res
+                    img,lines,bb,collision_mask = txt_render_res
                     # update the region collision mask:
                     place_masks[ireg] = collision_mask
                     # store the result:
-                    itext.append(text)
+                    itext.append(lines)
                     ibb.append(bb)
 
             if  placed:
                 # at least 1 word was placed in this instance:
                 idict['img'] = img
-                idict['txt'] = itext
+                idict['txt'] = itext[0]
                 idict['charBB'] = np.concatenate(ibb, axis=2)
-                idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), ' '.join(itext))
+                idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), itext[0])
                 res.append(idict.copy())
                 if viz:
                     viz_textbb(1,img, [idict['wordBB']], alpha=1.0)

@@ -83,7 +83,7 @@ class RenderFont(object):
 
         pygame.init()
 
-    def render_multiline(self,font,text):
+    def render_multiline(self,font,lines):
         """
         renders multiline TEXT on the pygame surface SURF with the
         font style FONT.
@@ -93,7 +93,6 @@ class RenderFont(object):
         returns the updated surface, words and the character bounding boxes.
         """
         # get the number of lines
-        lines = text.split('\n')
         lengths = [len(l) for l in lines]
         space = font.get_rect('O')
 
@@ -141,7 +140,7 @@ class RenderFont(object):
         rect_union = r0.unionall(bbs)
 
         # get the words:
-        words = ' '.join(text.split())
+        words = ' '.join(lines)
 
         # crop the surface to fit the text:
         bbs = np.array(bbs)
@@ -236,7 +235,8 @@ class RenderFont(object):
 
         text_type = sample_weighted(self.p_text)
         text = self.text_source.sample(imname,text_type)
-        max_n_char = max([len(t) for t in text.split('\n')])
+        lines = text.split('\n')
+        max_n_char = max([len(t) for t in lines])
 
         scaling = 1.5
         max_font_w = W / max_n_char
@@ -268,12 +268,12 @@ class RenderFont(object):
             #print "  > nline = %d, nchar = %d"%(nline, nchar)
 
             # sample text:
-            if len(text)==0 or np.any([len(line)==0 for line in text]):
+            if len(lines)==0 or np.any([len(line)==0 for line in lines]):
                 continue
             #print colorize(Color.GREEN, text)
 
             # render the text:
-            txt_arr,bb = self.render_multiline(font, text)
+            txt_arr,bb = self.render_multiline(font, lines)
             bb = self.bb_xywh2coords(bb)
 
             # make sure that the text-array is not bigger than mask array:
@@ -284,7 +284,7 @@ class RenderFont(object):
             # position the text within the mask:
             text_mask,loc,bb, _ = self.place_text([txt_arr], mask, [bb])
             if len(loc) > 0:#successful in placing the text collision-free:
-                return text_mask,loc[0],bb[0],text
+                return text_mask,loc[0],bb[0],lines
 
         return #None
 
