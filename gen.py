@@ -38,28 +38,28 @@ DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_DIR = 'results/images'
 
 # Names
-name_map = {
-    'ancho powder': 'ancho',
-    'annatto seeds': 'annatto',
-    'baharat seasoning': 'baharat',
-    'black pepper': 'pepper',
-    'carom seeds': 'carom',
-    'cayenne pepper': 'cayenne',
-    'chinese five spice powder': 'Chinese five spice',
-    'chipotle powder': 'chipotle',
-    'cream of tartar': 'tartar',
-    'curry powder': 'curry',
-    'fennel seeds': 'fennel',
-    'garlic powder': 'garlic',
+class_filter = {
+    'turmeric': 'tumeric',
     'ground cloves': 'cloves',
-    'mojo seasoning': 'mojo',
-    'mustard-powder': 'mustard',
-    'old bay seasoning': 'Old Bay',
-    'pumpkin pie spice': 'pumpkin spice',
-    'sea salt': 'sea salt',
-    'za atar seasoning': 'za\'atar'
-}
+    'caraway seeds': 'caraway',
+    'sea salt': 'salt',
+    'chili powder': 'chiles',
+    'star anise': 'anise',
+    'black pepper': 'peppercorns',
+    'fennel seeds': 'fennel',
+    'nutmeg': 'nutmeg',
+    'cardamom': 'cardamom',
+    'fenugreek': 'fenugreek',
+    'cumin': 'cumin',
+    'saffron': 'saffron',
+    'sumac': 'sumac',
+    'allspice': 'allspice',
+    'cinnamon': 'cinnamon',
+    'coriander': 'coriander'
+} 
+name_map = {
 
+}
 
 def max_contour(contours):
 
@@ -101,7 +101,12 @@ def get_data(folder):
         # Key for name lookup
         f_name = Path(path).name
         found = re.search(r"(prompt-.+)-mask", f_name)
-        key = found.groups(1)[0] if found else f_name
+        k = found.groups(1)[0] if found else f_name
+
+        # Only allow valid classes
+        key = class_filter.get(k, None)
+        if key == None:
+            continue
 
         # Image threshhold
         thresh_mask = (arr[:,:,3] < 127) 
