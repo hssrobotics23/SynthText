@@ -37,56 +37,75 @@ JPEG_QUALITY = 75
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_DIR = 'results/images'
 
-# Visually similar spices to 17 classes
+# Divide 51 sources into 17 classes
 class_filter = {
-    # Light Powders
-    'turmeric': 'tumeric',
-    'mango powder': 'tumeric',
-    'mustard powder': 'tumeric',
-    'curry powder': 'tumeric',
     'sea salt': 'salt',
-    'kosher salt': 'salt',
-    'garlic powder': 'salt',
-    'white pepper': 'salt',
     'pickling salt': 'salt',
-    'cream of tartar': 'salt',
-    # Red powders 
-    'gochugaru': 'chiles',
-    'chili powder': 'chiles',
-    'ancho powder': 'chiles',
-    'sichuan pepper': 'chiles',
+    'kosher salt': 'salt',
+
+    'turmeric': 'tumeric',
+    'mustard powder': 'tumeric',
+    'mango powder': 'tumeric',
+
     'red pepper flakes': 'chiles',
-    'cayenne pepper': 'chiles',
     'chili powder': 'chiles',
+    'sichuan pepper': 'chiles',
+
     'sumac': 'sumac',
-    'paprika': 'sumac',
-    'annatto seeds': 'sumac',
     'smoked paprika': 'sumac',
-    'baharat seasoning', 'sumac',
-    # Brown powders
-    'chinese five-spice powder': 'cinnamon',
+    'paprika': 'sumac',
+
     'cinnamon': 'cinnamon',
+    'chinese five-spice powder': 'cinnamon',
+    'pumpkin pie spice': 'cinnamon',
+
+    'mace': 'nutmeg',
     'garam masala': 'nutmeg',
     'nutmeg': 'nutmeg',
-    'mace': 'nutmeg',
+
     'cumin': 'cumin',
+    'curry powder': 'cumin',
     'ginger': 'cumin',
-    # Seeds
+
+    'ground cloves': 'cloves',
+    'dukkah': 'cloves',
+    'poppy seeds': 'cloves',
+
     'cardamom': 'cardamom',
-    'coriander': 'coriander',
+    'flax seeds': 'cardamom',
+    'chia seeds': 'cardamom',
+
     'caraway seeds': 'caraway',
+    'mahlab': 'caraway',
+    'za atar seasoning': 'caraway',
+
+    'coriander': 'coriander',
     'sesame seeds': 'coriander',
+    'marjoram': 'coriander',
+
     'fennel seeds': 'fennel',
+    'oregano': 'fennel',
     'celery seeds': 'fennel',
+
     'fenugreek': 'fenugreek',
+    'annatto seeds': 'fenugreek',
     'carom seeds': 'fenugreek',
+
     'black pepper': 'peppercorns',
     'grains of paradise': 'peppercorns',
-    # Et Cetera
-    'ground cloves': 'cloves',
-    'allspice': 'allspice',
+    'white pepper': 'peppercorns',
+
     'saffron': 'saffron',
-    'star anise': 'anise'
+    'ancho powder': 'saffron',
+    'gochugaru': 'saffron',
+
+    'allspice': 'allspice',
+    'baharat seasoning': 'allspice',
+    'garlic powder': 'allspice',
+
+    'star anise': 'anise',
+    'pickling spice': 'anise',
+    'cayenne pepper': 'anise',
 }
 name_map = {
 
