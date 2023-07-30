@@ -37,26 +37,57 @@ JPEG_QUALITY = 75
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_DIR = 'results/images'
 
-# Names
+# Visually similar spices to 17 classes
 class_filter = {
+    # Light Powders
     'turmeric': 'tumeric',
-    'ground cloves': 'cloves',
-    'caraway seeds': 'caraway',
+    'mango powder': 'tumeric',
+    'mustard powder': 'tumeric',
+    'curry powder': 'tumeric',
     'sea salt': 'salt',
+    'kosher salt': 'salt',
+    'garlic powder': 'salt',
+    'white pepper': 'salt',
+    'pickling salt': 'salt',
+    'cream of tartar': 'salt',
+    # Red powders 
+    'gochugaru': 'chiles',
     'chili powder': 'chiles',
-    'star anise': 'anise',
-    'black pepper': 'peppercorns',
-    'fennel seeds': 'fennel',
-    'nutmeg': 'nutmeg',
-    'cardamom': 'cardamom',
-    'fenugreek': 'fenugreek',
-    'cumin': 'cumin',
-    'saffron': 'saffron',
+    'ancho powder': 'chiles',
+    'sichuan pepper': 'chiles',
+    'red pepper flakes': 'chiles',
+    'cayenne pepper': 'chiles',
+    'chili powder': 'chiles',
     'sumac': 'sumac',
-    'allspice': 'allspice',
+    'paprika': 'sumac',
+    'annatto seeds': 'sumac',
+    'smoked paprika': 'sumac',
+    'baharat seasoning', 'sumac',
+    # Brown powders
+    'chinese five-spice powder': 'cinnamon',
     'cinnamon': 'cinnamon',
-    'coriander': 'coriander'
-} 
+    'garam masala': 'nutmeg',
+    'nutmeg': 'nutmeg',
+    'mace': 'nutmeg',
+    'cumin': 'cumin',
+    'ginger': 'cumin',
+    # Seeds
+    'cardamom': 'cardamom',
+    'coriander': 'coriander',
+    'caraway seeds': 'caraway',
+    'sesame seeds': 'coriander',
+    'fennel seeds': 'fennel',
+    'celery seeds': 'fennel',
+    'fenugreek': 'fenugreek',
+    'carom seeds': 'fenugreek',
+    'black pepper': 'peppercorns',
+    'grains of paradise': 'peppercorns',
+    # Et Cetera
+    'ground cloves': 'cloves',
+    'allspice': 'allspice',
+    'saffron': 'saffron',
+    'star anise': 'anise'
+}
 name_map = {
 
 }
