@@ -39,73 +39,73 @@ OUT_DIR = 'results/images'
 
 # Divide 51 sources into 17 classes
 class_filter = {
-    'sea salt': 'salt',
-    'pickling salt': 'salt',
-    'kosher salt': 'salt',
+    'sea-salt': 'salt',
+    'pickling-salt': 'salt',
+    'kosher-salt': 'salt',
 
     'turmeric': 'tumeric',
-    'mustard powder': 'tumeric',
-    'mango powder': 'tumeric',
+    'mustard-powder': 'tumeric',
+    'mango-powder': 'tumeric',
 
-    'red pepper flakes': 'chiles',
-    'chili powder': 'chiles',
-    'sichuan pepper': 'chiles',
+    'red-pepper-flakes': 'chiles',
+    'chili-powder': 'chiles',
+    'sichuan-pepper': 'chiles',
 
     'sumac': 'sumac',
-    'smoked paprika': 'sumac',
+    'smoked-paprika': 'sumac',
     'paprika': 'sumac',
 
     'cinnamon': 'cinnamon',
-    'chinese five-spice powder': 'cinnamon',
-    'pumpkin pie spice': 'cinnamon',
+    'chinese-five-spice-powder': 'cinnamon',
+    'pumpkin-pie-spice': 'cinnamon',
 
     'mace': 'nutmeg',
-    'garam masala': 'nutmeg',
+    'garam-masala': 'nutmeg',
     'nutmeg': 'nutmeg',
 
     'cumin': 'cumin',
-    'curry powder': 'cumin',
+    'curry-powder': 'cumin',
     'ginger': 'cumin',
 
-    'ground cloves': 'cloves',
+    'ground-cloves': 'cloves',
     'dukkah': 'cloves',
-    'poppy seeds': 'cloves',
+    'poppy-seeds': 'cloves',
 
     'cardamom': 'cardamom',
-    'flax seeds': 'cardamom',
-    'chia seeds': 'cardamom',
+    'flax-seeds': 'cardamom',
+    'chia-seeds': 'cardamom',
 
-    'caraway seeds': 'caraway',
+    'caraway-seeds': 'caraway',
     'mahlab': 'caraway',
-    'za atar seasoning': 'caraway',
+    'za-atar-seasoning': 'caraway',
 
     'coriander': 'coriander',
-    'sesame seeds': 'coriander',
+    'sesame-seeds': 'coriander',
     'marjoram': 'coriander',
 
-    'fennel seeds': 'fennel',
+    'fennel-seeds': 'fennel',
     'oregano': 'fennel',
-    'celery seeds': 'fennel',
+    'celery-seeds': 'fennel',
 
     'fenugreek': 'fenugreek',
-    'annatto seeds': 'fenugreek',
-    'carom seeds': 'fenugreek',
+    'annatto-seeds': 'fenugreek',
+    'carom-seeds': 'fenugreek',
 
-    'black pepper': 'peppercorns',
-    'grains of paradise': 'peppercorns',
-    'white pepper': 'peppercorns',
+    'black-pepper': 'peppercorns',
+    'grains-of-paradise': 'peppercorns',
+    'white-pepper': 'peppercorns',
 
     'saffron': 'saffron',
-    'ancho powder': 'saffron',
+    'ancho-powder': 'saffron',
     'gochugaru': 'saffron',
 
     'allspice': 'allspice',
-    'baharat seasoning': 'allspice',
-    'garlic powder': 'allspice',
+    'baharat-seasoning': 'allspice',
+    'garlic-powder': 'allspice',
 
-    'star anise': 'anise',
-    'pickling spice': 'anise',
-    'cayenne pepper': 'anise',
+    'star-anise': 'anise',
+    'pickling-spice': 'anise',
+    'cayenne-pepper': 'anise',
 }
 name_map = {
 
@@ -137,6 +137,7 @@ def to_bounding_box(contours):
 
 def get_data(folder):
     paths = glob.glob(osp.join(folder, '*mask.png'))
+    copy_counts = dict()
     out = {
         "seg": {},
         "image": {},
@@ -150,13 +151,28 @@ def get_data(folder):
 
         # Key for name lookup
         f_name = Path(path).name
-        found = re.search(r"(prompt-.+)-mask", f_name)
-        k = found.groups(1)[0] if found else f_name
+        found_k = re.search(r"(prompt-.+)-mask", f_name)
+        k = found_k.groups(1)[0] if found_k else f_name
 
-        # Only allow valid classes
-        key = class_filter.get(k, None)
-        if key == None:
+        # Find the spice name
+        found_s = re.search(r"spice-(.+)", k)
+        if (found_s is None): continue
+
+        # Find the class name
+        s = found_s.groups(1)[0]
+        spice = class_filter.get(s, None)
+        if (spice is None): continue
+
+        # Replace the spice with the class
+        base_key = k.replace(s, spice)
+        if base_key == None:
             continue
+        # Deduplicate repeated keys
+        n_copies = copy_counts.get(base_key, 0)
+        copy_counts[base_key] = n_copies + 1
+        key = f'{base_key}:{n_copies}'
+
+        if(n_copies == 0): print(f'{s} -> {spice}')
 
         # Image threshhold
         thresh_mask = (arr[:,:,3] < 127) 
@@ -204,18 +220,19 @@ def main(folder):
   print (colorize(Color.GREEN,'Storing the output in: '+OUT_DIR, bold=True))
 
   # get the names of the image files in the dataset:
-  imnames = sorted(db['image'].keys())
+  keys = sorted(db['image'].keys())
 
   RV3 = RendererV3(name_map, DATA_PATH, max_time=SECS_PER_IMG)
-  for (i, imname) in enumerate(imnames):
+  for (i, key) in enumerate(keys):
+    imname, nth_copy = key.split(':')
     try:
       # get the image:
-      img_array = db['image'][imname]
+      img_array = db['image'][key]
       img = Image.fromarray(img_array[:])
       # get segmentation:
-      seg = db['seg'][imname][:].astype('float32')
-      area = db['area'][imname]
-      label = db['label'][imname]
+      seg = db['seg'][key][:].astype('float32')
+      area = db['area'][key]
+      label = db['label'][key]
 
       # re-size uniformly:
       sz = img_array.shape[:2][::-1]
@@ -224,34 +241,32 @@ def main(folder):
       img = np.array(img.resize(sz,Image.ANTIALIAS))
       seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
 
-      print(colorize(Color.RED,'%d of %d'%(i+1,len(imnames)), bold=True))
-      res = RV3.render_text(imname,img,depth,seg,area,label,
-                            ninstance=INSTANCE_PER_IMAGE,viz=False)
-      if len(res) > 0:
-        for (ri, r) in enumerate(res):
-            word_verts = []
-            lines = r["txt"]
-            x_points, y_points = r["wordBB"]
-            # TODO: fix this odd wordBB format!!
-            for i in range(len(lines)):
-                x_val = lambda j: int(round(x_points[j][i]))
-                y_val = lambda j: int(round(y_points[j][i]))
-                word_verts.append([
-                    { "x": x_val(j), "y": y_val(j) } for j in range(4)
-                ])
-            # Each word has a four-point boundary
-            words = [
-                {"points": v, "word": w} for (v, w) in zip(word_verts, lines)
-            ]
-            out_name = f'{imname}-text-{ri}.jpg'
-            fname = os.path.join(OUT_DIR, out_name)
-            cv2.imwrite(fname, r["img"][:,:,::-1], [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-            print(f'Saved {out_name}')
-            meta_data.append({
-                'words': words,
-                'file_name': out_name
-            })
-            # non-empty : successful in placing text:
+      print(colorize(Color.RED,'%d of %d'%(i+1,len(keys)), bold=True))
+      r = RV3.render_text(imname,img,depth,seg,area,label,
+                            ninstance=INSTANCE_PER_IMAGE,viz=False)[0]
+      word_verts = []
+      lines = r["txt"]
+      x_points, y_points = r["wordBB"]
+      # TODO: fix this odd wordBB format!!
+      for i in range(len(lines)):
+          x_val = lambda j: int(round(x_points[j][i]))
+          y_val = lambda j: int(round(y_points[j][i]))
+          word_verts.append([
+              { "x": x_val(j), "y": y_val(j) } for j in range(4)
+          ])
+      # Each word has a four-point boundary
+      words = [
+          {"points": v, "word": w} for (v, w) in zip(word_verts, lines)
+      ]
+      out_name = f'{imname}-text-{nth_copy}.jpg'
+      fname = os.path.join(OUT_DIR, out_name)
+      cv2.imwrite(fname, r["img"][:,:,::-1], [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+      print(f'Saved {out_name}')
+      meta_data.append({
+          'words': words,
+          'file_name': out_name
+      })
+      # non-empty : successful in placing text:
     except:
       traceback.print_exc()
       print (colorize(Color.GREEN,'>>>> CONTINUING....', bold=True))

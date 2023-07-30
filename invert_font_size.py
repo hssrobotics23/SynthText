@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import cPickle as cp
 
 
-pygame.init()
+pygame.freetype.init()
+pygame.font.init()
 
 
 ys = np.arange(8,200)

@@ -15,6 +15,9 @@ OUT_DIR = './merged'
 PROMPTS = {
     '3.3.0': 3 * (
 'Photograph in pantry of a name-brand plastic spice jar with a small square paper label for the {spice}',
+    ),
+    '4.0.0': 3 * (
+'Photograph in pantry of a name-brand plastic spice jar with a small square paper label for the {spice}',
     )
 }
 

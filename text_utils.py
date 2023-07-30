@@ -81,7 +81,8 @@ class RenderFont(object):
         # get font-state object:
         self.font_state = FontState(data_dir)
 
-        pygame.init()
+        pygame.freetype.init()
+        pygame.font.init()
 
     def render_multiline(self,font,lines):
         """

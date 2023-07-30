@@ -288,7 +288,7 @@ class Colorize(object):
         bg_range = np.max(bg_gray_small) - np.min(bg_gray_small)
         # Shadow and border affected by contrast
         p_drop_shadow = max(0.25, 1.0 - (bg_range/255))
-        p_border = min(1, 0.25 + (bg_range/255))
+        p_border = min(1, 0.75 + (bg_range/255))
 
         l_text.alpha = l_text.alpha
         layers = [l_text]
